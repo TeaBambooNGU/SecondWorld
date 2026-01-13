@@ -18,12 +18,7 @@ def build_director_plan_prompt(
     chapter_max_chars: int,
 ) -> List[Dict[str, str]]:
     outline_summary = {key: value for key, value in outline.items() if key != "chapters"}
-    system = (
-        "You are the Director Agent for a serialized xuanhuan novel. "
-        "Plan the chapter with clear objectives, conflicts, and pacing. "
-        "Write in Chinese and keep the plan concise.\n\n"
-        "Style guide:\n" + style_guide
-    )
+    system = style_guide
     user = (
         "Create a chapter plan in strict JSON with the following keys:\n"
         "chapter_id, title, goal, beats (list), cast (list of agent ids), "
@@ -47,11 +42,7 @@ def build_agent_contribution_prompt(
     style_guide: str,
     previous_summary: str | None,
 ) -> List[Dict[str, str]]:
-    system = (
-        "You are a character agent contributing to a chapter. "
-        "Write in Chinese and focus on actions, dialogue, and emotional beats.\n\n"
-        "Style guide:\n" + style_guide
-    )
+    system = style_guide
     user = (
         f"Agent profile:\n{agent}\n\n"
         f"Chapter plan:\n{plan}\n\n"
@@ -73,11 +64,7 @@ def build_director_draft_prompt(
     chapter_min_chars: int,
     chapter_max_chars: int,
 ) -> List[Dict[str, str]]:
-    system = (
-        "You are the Director Agent composing the final chapter draft. "
-        "Write in Chinese, in a unified voice, and avoid AI-like patterns.\n\n"
-        "Style guide:\n" + style_guide
-    )
+    system = style_guide
     user = (
         f"Chapter plan:\n{plan}\n\n"
         f"Agent contributions:\n{contributions}\n\n"
@@ -140,15 +127,10 @@ def build_director_revision_prompt(
     chapter_min_chars: int,
     chapter_max_chars: int,
 ) -> List[Dict[str, str]]:
-    system = (
-        "You are the Director Agent revising a chapter draft. "
-        "Write in Chinese, keep the unified voice, and fix issues precisely.\n\n"
-        "Style guide:\n" + style_guide
-    )
+    system = style_guide
     user = (
-        f"Chapter plan:\\n{plan}\\n\\n"
-        f"Draft to revise:\\n{draft}\\n\\n"
         f"Editor notes:\\n{post_check}\\n\\n"
+        f"Draft to revise:\\n{draft}\\n\\n"
         "Revise the draft to address issues and suggestions. "
         "Output the full revised chapter in Markdown without code fences. "
         f"Target length: {chapter_min_chars}-{chapter_max_chars} Chinese characters.\\n\\n"
@@ -166,11 +148,7 @@ def build_director_final_prompt(
     chapter_min_chars: int,
     chapter_max_chars: int,
 ) -> List[Dict[str, str]]:
-    system = (
-        "You are the Director Agent doing the final cut for a chapter. "
-        "Write in Chinese, keep the unified voice, and fix only logical or physical issues.\n\n"
-        "Style guide:\n" + style_guide
-    )
+    system = style_guide
     user = (
         f"Chapter plan:\n{plan}\n\n"
         f"Draft to finalize:\n{draft}\n\n"

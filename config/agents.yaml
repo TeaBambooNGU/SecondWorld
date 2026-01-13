@@ -67,12 +67,12 @@ agents:
     identity_id: 师者
     traits: ["话留半句", "观察重于表态", "借物试人"]
 
-  - id: 柳七
+  - id: 韩霜降
     type: 配角
     personality_id: 机变带玩味
     background_id: 江湖游荡
     identity_id: 侠盗
-    traits: ["剑意阴冷", "试探底线", "爱逞轻佻"]
+    traits: ["试探底线", "爱逞轻佻"]
 
   - id: 六星皇朝使臣
     type: 配角

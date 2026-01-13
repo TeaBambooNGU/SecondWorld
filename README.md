@@ -43,19 +43,19 @@ uv run python -m src.cli chapter --chapter 0001
 - 只生成章节计划：
 
 ```bash
-uv run python -m src.cli plan --chapter 0001
+uv run python -m src.cli plan --chapter 0001 --trace
 ```
 
 - 生成章节草稿：
 
 ```bash
-uv run python -m src.cli chapter --chapter 0001
+uv run python -m src.cli chapter --chapter 0001 --trace
 ```
 
 - 自动续写下一章：
 
 ```bash
-uv run python -m src.cli chapter
+uv run python -m src.cli chapter --trace
 ```
 
 ## 说明
