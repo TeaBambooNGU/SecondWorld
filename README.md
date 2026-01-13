@@ -25,7 +25,7 @@ cp config/.env.example .env
 - `config/agents.yaml`
 - `config/character_components/`（性格/背景/身份组件）
 - `config/outline.yaml`
-- `config/style_guide/`（共享规则在 `shared.md`，各角色提示语在 `agents/`）
+- `config/style_guide/`（共享规则在 `anti_ai_rules.md`，各角色提示语在 `agents/`）
 - `config/style_guide/components/`（性格/背景/身份提示语）
 
 4) 生成章节草稿：

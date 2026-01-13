@@ -17,6 +17,7 @@ def build_director_plan_prompt(
     chapter_min_chars: int,
     chapter_max_chars: int,
 ) -> List[Dict[str, str]]:
+    outline_summary = {key: value for key, value in outline.items() if key != "chapters"}
     system = (
         "You are the Director Agent for a serialized xuanhuan novel. "
         "Plan the chapter with clear objectives, conflicts, and pacing. "
@@ -29,7 +30,7 @@ def build_director_plan_prompt(
         "conflicts (list), pacing_notes, word_target.\n\n"
         f"Word target must be between {chapter_min_chars} and {chapter_max_chars} characters. "
         f"Cast size should be <= {max_agents}.\n\n"
-        f"Series outline:\n{outline}\n\n"
+        f"Series outline:\n{outline_summary}\n\n"
         f"Chapter seed:\n{chapter}\n\n"
     )
     if previous_summary:
@@ -101,6 +102,28 @@ def build_post_check_prompt(
     user = (
         "Return strict JSON with keys: summary, issues (list), suggestions (list), pacing_score (1-10).\n\n"
         f"Chapter plan:\n{plan}\n\n"
+        f"Draft:\n{draft}\n"
+    )
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+
+
+def build_anti_ai_cleanup_prompt(
+    draft: str,
+    forbidden_terms: List[str],
+) -> List[Dict[str, str]]:
+    system = (
+        "You are an editor removing overused web-novel words. "
+        "Write in Chinese and keep the original meaning."
+    )
+    user = (
+        "Remove any forbidden terms from the draft. "
+        "If direct deletion harms meaning, rewrite the sentence to preserve meaning. "
+        "Do not add new plot, characters, or emotional embellishment. "
+        "Output the full chapter in Markdown without code fences.\n\n"
+        f"Forbidden terms:\n{forbidden_terms}\n\n"
         f"Draft:\n{draft}\n"
     )
     return [

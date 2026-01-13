@@ -1,6 +1,6 @@
 # 工程架构梳理
 
-- 当前梳理时间: 2026-01-13 15:17:47
+- 当前梳理时间: 2026-01-13 20:46:15
 
 ## 项目概览
 
@@ -31,10 +31,11 @@
 ### 数据流/控制流
 
 - 大纲 `config/outline.yaml` -> 计划 `data/plans/{chapter}.json`
+- 计划提示词中的 Series outline 仅使用系列/世界观概要，不包含 chapters，章节种子单独传入
 - 角色组件 `config/style_guide/components/{personality|background|identity}/*.md` + 角色配置 `config/agents.yaml`（主角/配角按角色名，龙套使用 archetype） -> 角色画像（含 traits）
-- 角色画像 + 角色提示语 -> 角色贡献 -> 导演成稿 -> 修订（编辑复核 + 导演修订） -> 终审 -> 状态写入 `data/state.json`
+- 角色画像 + 角色提示语 -> 角色贡献 -> 导演成稿 -> 修订（编辑复核 + 导演修订） -> 反AI高频词审核清理 -> 终审 -> 状态写入 `data/state.json`
 - 成稿/修订/终审正文 -> 最新正文写入 `chapters/{chapter_id}_{slug}.md` -> 版本归档写入 `chapters/history/{chapter_id}_{slug}_成稿.md` / `chapters/history/{chapter_id}_{slug}_修订一.md` / `chapters/history/{chapter_id}_{slug}_终审.md` -> 版本索引写入 `data/state.json`
-- 风格提示语由 `config/style_guide/shared.md`、`config/style_guide/agents/{角色名}.md`（主角/配角）与 `config/style_guide/agents/{暴烈型|谨慎型|仁善型|冷静型}.md`（龙套类）、`config/style_guide/agents/director/{plan|draft|revision|final}.md` 与 `config/style_guide/components/{type}/{id}.md` 组合后注入 system 提示词
+- 风格提示语由 `config/style_guide/anti_ai_rules.md`、`config/style_guide/agents/{角色名}.md`（主角/配角）与 `config/style_guide/agents/{暴烈型|谨慎型|仁善型|冷静型}.md`（龙套类）、`config/style_guide/agents/director/{plan|draft|revision|final}.md` 与 `config/style_guide/components/{type}/{id}.md` 组合后注入 system 提示词
 
 ### 成稿版本留存
 
@@ -48,7 +49,7 @@
 - `config/agents.yaml`: 角色档案、组件引用与 traits
 - `config/style_guide/components/`: 性格/背景/身份组件
 - `config/outline.yaml`: 章节大纲
-- `config/style_guide/`: 共享规则与各角色独立提示语
+- `config/style_guide/`: 反AI规则与各角色独立提示语
 - `config/style_guide/agents/{角色名}.md`: 主角/配角提示语（非 director）
 - `config/style_guide/agents/{暴烈型|谨慎型|仁善型|冷静型}.md`: 龙套类提示语
 - `config/style_guide/agents/director/plan.md`: 导演计划提示语
@@ -60,11 +61,23 @@
 
 ### 运行流程
 
-- 运行步骤: plan 生成计划 -> chapter 生成成稿并可流式输出 -> 修订（编辑复核 + 导演修订） -> 终审（无条件执行） -> 每次成稿/修订/终审归档版本
+- 运行步骤: plan 生成计划 -> chapter 生成成稿并可流式输出 -> 修订（编辑复核 + 导演修订） -> 反AI高频词审核清理 -> 终审（无条件执行） -> 每次成稿/修订/终审归档版本
 - 异常/边界处理: 缺少 API Key 直接报错；章节文件已存在且未 `--force` 则中止
 - 观测与日志: `--trace` 写入 `logs/trace_{chapter}_{YYYY-MM-DD_HH:mm:ss}.log`，章节状态写入 `data/state.json`
 
 ## 改动概要/变更记录
+
+### 2026-01-13 20:46:15
+
+- 本次新增/更新要点: 修订流程增加反AI高频词审核清理，shared.md 更名为 anti_ai_rules.md
+- 变更动机/需求来源: 用户要求修订时清理高频网文词，并改名共享规则文件
+- 当前更新时间: 2026-01-13 20:46:15
+
+### 2026-01-13 19:47:59
+
+- 本次新增/更新要点: 计划提示词的 Series outline 移除 chapters，仅保留系列/世界观概要
+- 变更动机/需求来源: 用户要求 Series outline 不包含大纲 chapters
+- 当前更新时间: 2026-01-13 19:47:59
 
 ### 2026-01-13 15:17:47
 

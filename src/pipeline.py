@@ -8,6 +8,7 @@ from .config_loader import get_api_key, load_env, load_text, load_yaml
 from .deepseek_client import DeepSeekClient
 from .prompting import (
     build_agent_contribution_prompt,
+    build_anti_ai_cleanup_prompt,
     build_director_draft_prompt,
     build_director_final_prompt,
     build_director_plan_prompt,
@@ -18,7 +19,9 @@ from .prompting import (
 from .utils import (
     FileLogger,
     build_agent_profile,
+    extract_forbidden_terms,
     extract_json,
+    find_forbidden_terms,
     load_json,
     now_iso,
     save_json,
@@ -186,6 +189,24 @@ class ChapterPipeline:
             draft = self._write_draft(output_path, revision_messages, generation, stream)
             self._log_trace("修订-改稿-正文", draft)
             versions.append(self._archive_draft(output_path, draft, stage="revision"))
+
+        forbidden_terms = extract_forbidden_terms(shared_style)
+        if forbidden_terms:
+            matched_terms = find_forbidden_terms(draft, forbidden_terms)
+            if matched_terms:
+                self._log_info(f"反AI审核命中高频词: {', '.join(matched_terms)}")
+                self._log_trace("修订-反AI-命中词", ", ".join(matched_terms))
+                cleanup_messages = build_anti_ai_cleanup_prompt(
+                    draft=draft,
+                    forbidden_terms=matched_terms,
+                )
+                self._log_trace("修订-反AI-提示词", self._format_messages(cleanup_messages))
+                draft = self._write_draft(output_path, cleanup_messages, generation, stream)
+                self._log_trace("修订-反AI-正文", draft)
+            else:
+                self._log_info("反AI审核未命中高频词，跳过清理")
+        else:
+            self._log_info("反AI审核规则为空，跳过清理")
 
         style_guide = self._compose_style_guide("director", shared_style, stage="final")
         final_messages = build_director_final_prompt(

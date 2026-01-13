@@ -14,14 +14,14 @@ generation:
   chapter_min_chars: 3000
   chapter_max_chars: 5000
   max_agents_per_chapter: 10
-  max_turns: 1
+  max_turns: 2
   temperature: 1.5
   top_p: 0.8
 
 paths:
   agents: "config/agents.yaml"
   outline: "config/outline.yaml"
-  style_guide_shared: "config/style_guide/shared.md"
+  style_guide_shared: "config/style_guide/anti_ai_rules.md"
   style_guide_agents_dir: "config/style_guide/agents"
   style_guide_components_dir: "config/style_guide/components"
   output_dir: "chapters"

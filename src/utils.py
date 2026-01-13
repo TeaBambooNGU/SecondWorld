@@ -39,6 +39,48 @@ def extract_json(text: str) -> str | None:
     return match.group(0) if match else None
 
 
+def extract_forbidden_terms(text: str) -> list[str]:
+    terms: list[str] = []
+    in_list = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if "不要使用的高频网文词" in stripped:
+            in_list = True
+            continue
+        if in_list and stripped.startswith("#"):
+            break
+        if not in_list:
+            continue
+        if not stripped.startswith("-"):
+            continue
+        content = stripped.lstrip("-").strip()
+        if not content:
+            continue
+        parts = re.split(r"[、,，;；]+", content)
+        for part in parts:
+            term = part.strip().strip("、,，;；。.")
+            if term:
+                terms.append(term)
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for term in terms:
+        if term in seen:
+            continue
+        seen.add(term)
+        deduped.append(term)
+    return deduped
+
+
+def find_forbidden_terms(text: str, terms: list[str]) -> list[str]:
+    hits: list[str] = []
+    for term in terms:
+        if term and term in text:
+            hits.append(term)
+    return list(dict.fromkeys(hits))
+
+
 def load_json(path: str | Path, default: Any) -> Any:
     path = Path(path)
     if not path.exists():
