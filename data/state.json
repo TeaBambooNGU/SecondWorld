@@ -1,0 +1,73 @@
+{
+  "chapters": {
+    "0001": {
+      "title": "三星照命",
+      "file": "chapters/0001_chapter.md",
+      "summary": "本章以于皓十岁生辰宴为舞台，通过喜庆氛围与六星皇朝使臣的傲慢形成对比，突出于皓天真受宠的形象，同时揭示荧惑侯国面临的外部政治压迫和内部民生隐患。赠礼环节展示家族成员的不同关注点，埋下未来冲突伏笔，结尾以于皓的疏忽和父皇的沉重低语留下悬疑钩子，暗示侯国危机。",
+      "issues": [
+        "于皓的天真形象刻画较为单一，可能削弱读者对其后续成长转变的期待",
+        "父皇的内心冲突（父亲与君主的矛盾）描写稍显隐晦，情感张力可进一步加强",
+        "节奏在赠礼环节信息密集，但部分描述较长，可能影响阅读流畅度",
+        "钩子部分于皓分心的动机（机关雀撞柱）稍显巧合，需更自然衔接"
+      ],
+      "suggestions": [
+        "增加于皓对宴会中微妙气氛的零星感知（如使臣眼神、父皇紧绷），为未来觉醒铺垫",
+        "强化父皇阅读国书时的心理活动或细微肢体语言，以突出其隐忍与无奈",
+        "精简赠礼环节的次要细节，加快节奏，确保核心信息（书、剑、玉）的象征意义清晰突出",
+        "调整钩子部分，使于皓的注意力转移更符合儿童心性（如被声响或玩具故障自然吸引），避免生硬"
+      ],
+      "pacing_score": 7,
+      "versions": [
+        {
+          "path": "chapters/history/0001_chapter_成稿.md",
+          "label": "成稿",
+          "stage": "draft",
+          "created_at": "2026-01-13T07:09:11.597839+00:00"
+        },
+        {
+          "path": "chapters/history/0001_chapter_修订一.md",
+          "label": "修订一",
+          "stage": "revision",
+          "created_at": "2026-01-13T07:12:18.460915+00:00"
+        },
+        {
+          "path": "chapters/history/0001_chapter_终审.md",
+          "label": "终审",
+          "stage": "final",
+          "created_at": "2026-01-13T07:14:45.054941+00:00"
+        },
+        {
+          "path": "chapters/history/0001_chapter_成稿.md",
+          "label": "成稿",
+          "stage": "draft",
+          "created_at": "2026-01-13T07:47:07.069990+00:00"
+        },
+        {
+          "path": "chapters/history/0001_chapter_修订一.md",
+          "label": "修订一",
+          "stage": "revision",
+          "created_at": "2026-01-13T07:49:42.006198+00:00"
+        },
+        {
+          "path": "chapters/history/0001_chapter_终审.md",
+          "label": "终审",
+          "stage": "final",
+          "created_at": "2026-01-13T07:51:41.566036+00:00"
+        },
+        {
+          "path": "chapters/history/0001_chapter_成稿.md",
+          "label": "成稿",
+          "stage": "draft",
+          "created_at": "2026-01-13T08:31:33.379168+00:00"
+        },
+        {
+          "path": "chapters/history/0001_chapter_终审.md",
+          "label": "终审",
+          "stage": "final",
+          "created_at": "2026-01-13T08:34:47.141934+00:00"
+        }
+      ],
+      "updated_at": "2026-01-13T08:34:47.142071+00:00"
+    }
+  }
+}

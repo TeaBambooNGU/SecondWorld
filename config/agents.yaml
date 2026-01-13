@@ -1,0 +1,160 @@
+director:
+  id: director
+  name: 导演
+  role: "协调节奏、冲突检查与文风一致性"
+  voice: "冷静、果断、镜头感强"
+  goals:
+    - "保持章节目标清晰"
+    - "统一叙事声音"
+    - "维护连续性"
+  taboos:
+    - "不要使用报告式总结"
+
+agents:
+  - id: 于皓
+    type: 主角
+    personality_id: 好奇大胆
+    background_id: 世家贵胄
+    identity_id: 贵胄
+    traits: ["贪玩分心", "对暗流迟钝", "遇险先求活"]
+
+  - id: 于瑞
+    type: 配角
+    personality_id: 共情稳重
+    background_id: 世家贵胄
+    identity_id: 贵胄
+    traits: ["心系民生", "先看账再决策", "拒绝卖国"]
+
+  - id: 于年
+    type: 配角
+    personality_id: 坚定寡言
+    background_id: 世家贵胄
+    identity_id: 贵胄
+    traits: ["先探风险", "言少意重", "对边境异常敏感"]
+
+  - id: 荧惑侯
+    type: 配角
+    personality_id: 正式克制
+    background_id: 世家贵胄
+    identity_id: 贵胄
+    traits: ["外稳内耗", "先国后家", "以礼维边界"]
+
+  - id: 皇后
+    type: 配角
+    personality_id: 慈悲务实
+    background_id: 市井行商
+    identity_id: 贵胄
+    traits: ["护子心重", "看重商路", "言软心硬"]
+
+  - id: 福安
+    type: 配角
+    personality_id: 多疑务实
+    background_id: 幕僚出身
+    identity_id: 护行者
+    traits: ["先避险后报告", "话留三分", "为主遮丑"]
+
+  - id: 赵锋
+    type: 配角
+    personality_id: 坚定寡言
+    background_id: 军伍护卫
+    identity_id: 护卫
+    traits: ["令行禁止", "先救主后追责", "对异常沉默"]
+
+  - id: 文渊
+    type: 配角
+    personality_id: 睿智沉稳
+    background_id: 书院出身
+    identity_id: 师者
+    traits: ["话留半句", "观察重于表态", "借物试人"]
+
+  - id: 柳七
+    type: 配角
+    personality_id: 机变带玩味
+    background_id: 江湖游荡
+    identity_id: 侠盗
+    traits: ["剑意阴冷", "试探底线", "爱逞轻佻"]
+
+  - id: 六星皇朝使臣
+    type: 配角
+    personality_id: 正式克制
+    background_id: 暗线权谋
+    identity_id: 执棋者
+    traits: ["以规矩压人", "威压含礼", "善设条件"]
+
+  - id: 百炼阁使者
+    type: 配角
+    personality_id: 细致自尊
+    background_id: 工坊出身
+    identity_id: 匠人
+    traits: ["按条款办事", "先定价再谈情", "材料不过关不交付"]
+
+  - id: 行脚僧首领
+    type: 配角
+    personality_id: 宁静神秘
+    background_id: 隐修孤居
+    identity_id: 玄士
+    traits: ["言辞克制", "以慈悲掩锋", "看破不点破"]
+
+  - id: 目光锐利的年轻僧人
+    type: 配角
+    personality_id: 警觉敏捷
+    background_id: 隐修孤居
+    identity_id: 玄士
+    traits: ["目光刺探", "对异物敏感", "沉默多于言说"]
+
+  - id: 主祭术士
+    type: 配角
+    personality_id: 理性精准
+    background_id: 幕僚出身
+    identity_id: 玄士
+    traits: ["强压慌乱", "以术稳局", "惜命但不退"]
+
+  - id: 玄渊州修士
+    type: 配角
+    personality_id: 冷酷有原则
+    background_id: 暗线权谋
+    identity_id: 玄士
+    traits: ["以庇护要价", "笑里藏刀", "先威后劝"]
+
+  - id: 阿虎
+    type: 配角
+    personality_id: 忠诚机敏
+    background_id: 军伍护卫
+    identity_id: 护卫
+    traits: ["先挡后问", "紧张但忠诚", "不敢违命"]
+
+  - id: 影卫首领
+    type: 配角
+    personality_id: 冷静坚硬
+    background_id: 军伍护卫
+    identity_id: 护卫
+    traits: ["沉默执行", "行动无声", "宁死不退"]
+
+extras:
+  - id: 暴烈型
+    archetype: 暴烈型
+    type: 龙套
+    personality_id: 冲动火爆
+    background_id: 战场余烬
+    identity_id: 佣兵
+
+  - id: 谨慎型
+    archetype: 谨慎型
+    type: 龙套
+    personality_id: 多疑务实
+    background_id: 逃亡避世
+    identity_id: 护行者
+
+  - id: 仁善型
+    archetype: 仁善型
+    type: 龙套
+    personality_id: 仁善共情
+    background_id: 行医漂泊
+    identity_id: 医者
+
+  - id: 冷静型
+    archetype: 冷静型
+    type: 龙套
+    personality_id: 冷静坚硬
+    background_id: 军伍护卫
+    identity_id: 护卫
