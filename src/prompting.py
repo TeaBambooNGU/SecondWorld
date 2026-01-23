@@ -157,7 +157,6 @@ def build_director_final_prompt(
 ) -> List[Dict[str, str]]:
     system = style_guide
     user = (
-        f"Chapter plan:\n{plan}\n\n"
         f"Draft to finalize:\n{draft}\n\n"
         "Fix physical and spatial inconsistencies, unreachable actions, and unclear sensation sources. "
         "Do not add new plot, characters, or emotional embellishment. "
