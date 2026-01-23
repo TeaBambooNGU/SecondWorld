@@ -18,6 +18,8 @@ def build_director_plan_prompt(
     chapter_max_chars: int,
 ) -> List[Dict[str, str]]:
     outline_summary = {key: value for key, value in outline.items() if key != "chapters"}
+    foreshadowing = chapter.get("foreshadowing")
+    chapter_seed = {key: value for key, value in chapter.items() if key != "foreshadowing"}
     system = style_guide
     user = (
         "Create a chapter plan in strict JSON with the following keys:\n"
@@ -26,8 +28,13 @@ def build_director_plan_prompt(
         f"Word target must be between {chapter_min_chars} and {chapter_max_chars} characters. "
         f"Cast size should be <= {max_agents}.\n\n"
         f"Series outline:\n{outline_summary}\n\n"
-        f"Chapter seed:\n{chapter}\n\n"
+        f"Chapter seed:\n{chapter_seed}\n\n"
     )
+    if foreshadowing:
+        user += (
+            "暗线参考（仅供背景参考，不得在计划 JSON 或正文中直写）:\n"
+            f"{foreshadowing}\n\n"
+        )
     if previous_summary:
         user += f"Previous chapter summary:\n{previous_summary}\n\n"
     return [

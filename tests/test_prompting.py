@@ -20,6 +20,29 @@ def test_build_director_plan_prompt():
     assert "strict JSON" in messages[1]["content"]
 
 
+def test_build_director_plan_prompt_includes_foreshadowing_reference():
+    outline = {"series": {"title": "Test"}, "chapters": []}
+    chapter = {
+        "id": "0001",
+        "title": "Test Chapter",
+        "summary": "Seed",
+        "foreshadowing": "暗线示例",
+    }
+    messages = build_director_plan_prompt(
+        outline=outline,
+        chapter=chapter,
+        style_guide="Style",
+        previous_summary=None,
+        max_agents=4,
+        chapter_min_chars=2000,
+        chapter_max_chars=4000,
+    )
+    user_content = messages[1]["content"]
+    assert "暗线参考" in user_content
+    assert "暗线示例" in user_content
+    assert "foreshadowing" not in user_content
+
+
 def test_compose_style_guide():
     agent_style = "# Agent\nA"
     shared_style = "# Shared\nB"
