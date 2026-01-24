@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 
 from .config_loader import load_yaml
-from .pipeline import ChapterPipeline
+from .langchain_pipeline import LangChainPipeline
 from .utils import FileLogger, load_json
 
 
@@ -81,7 +81,7 @@ def main() -> int:
         logger.info(f"启动命令: {args.command} chapter={getattr(args, 'chapter', None)}")
         logger.info(f"配置路径: {args.config}")
 
-    pipeline = ChapterPipeline(project_path=args.config, logger=logger)
+    pipeline = LangChainPipeline(project_path=args.config, logger=logger)
 
     if args.command == "plan":
         plan = pipeline.run_plan(chapter_id=args.chapter)

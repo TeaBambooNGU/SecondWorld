@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from langchain_core.prompts import ChatPromptTemplate
+
 
 def compose_style_guide(agent_style: str, shared_style: str) -> str:
     parts = [agent_style.strip(), shared_style.strip()]
@@ -16,7 +18,7 @@ def build_director_plan_prompt(
     max_agents: int,
     chapter_min_chars: int,
     chapter_max_chars: int,
-) -> List[Dict[str, str]]:
+) -> ChatPromptTemplate:
     outline_summary = {key: value for key, value in outline.items() if key != "chapters"}
     foreshadowing = chapter.get("foreshadowing")
     chapter_seed = {key: value for key, value in chapter.items() if key != "foreshadowing"}
@@ -38,10 +40,12 @@ def build_director_plan_prompt(
         )
     if previous_summary:
         user += f"上一章摘要：\n{previous_summary}\n\n"
-    return [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ]
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", system),
+            ("user", user),
+        ]
+    )
 
 
 def build_agent_contribution_prompt(
@@ -49,30 +53,33 @@ def build_agent_contribution_prompt(
     plan: Dict[str, Any],
     style_guide: str,
     previous_summary: str | None,
-) -> List[Dict[str, str]]:
+) -> ChatPromptTemplate:
     system = style_guide
     user = (
+        "请用严格 JSON 输出角色贡献，包含以下键：\n"
+        "agent_id, name, highlights (list, 6-10 条)。\n\n"
         f"角色资料：\n{agent}\n\n"
         f"章节计划：\n{plan}\n\n"
-        "提供 6-10 条要点：动作、对话片段、冲突点与感官细节。"
-        "避免总结或旁白。"
+        "highlights 需包含动作、对话片段、冲突点与感官细节，避免总结或旁白。"
     )
     if previous_summary:
         user += f"\n上一章摘要：\n{previous_summary}\n"
-    return [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ]
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", system),
+            ("user", user),
+        ]
+    )
 
 
 def build_director_draft_prompt(
     plan: Dict[str, Any],
-    contributions: Dict[str, str],
+    contributions: Dict[str, Any],
     style_guide: str,
     chapter_min_chars: int,
     chapter_max_chars: int,
     draft_examples: List[Dict[str, Any]] | None = None,
-) -> List[Dict[str, str]]:
+) -> ChatPromptTemplate:
     system = style_guide
     user = (
         f"章节计划：\n{plan}\n\n"
@@ -97,39 +104,65 @@ def build_director_draft_prompt(
                     user += f"   学习特点: {traits_text}\n"
             user += "\n"
             index += 1
-    return [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ]
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", system),
+            ("user", user),
+        ]
+    )
+
+
+def build_draft_length_fix_prompt(
+    plan: Dict[str, Any],
+    draft: str,
+    style_guide: str,
+    chapter_min_chars: int,
+    chapter_max_chars: int,
+    mode: str,
+) -> ChatPromptTemplate:
+    system = style_guide
+    if mode == "expand":
+        instruction = "请补写遗漏节拍与场景，使字数达到范围，不新增角色或支线。"
+    else:
+        instruction = "请压缩冗余与重复内容，使字数回到范围，不删减关键节拍。"
+    user = (
+        f"章节计划：\n{plan}\n\n"
+        f"当前草稿：\n{draft}\n\n"
+        f"目标字数：{chapter_min_chars}-{chapter_max_chars} 字。\n"
+        f"{instruction}\n\n"
+        "输出完整章节，使用 Markdown，不要代码围栏。\n"
+    )
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", system),
+            ("user", user),
+        ]
+    )
 
 
 def build_post_check_prompt(
     plan: Dict[str, Any],
     draft: str,
-) -> List[Dict[str, str]]:
-    system = (
-        "你是一名编辑，审阅章节草稿的冲突、节奏与风格问题。"
-        "请用严格 JSON 回复，并使用中文。"
-    )
+) -> ChatPromptTemplate:
+    system = "你是一名编辑，审阅章节草稿的冲突、节奏与风格问题。请用严格 JSON 回复，并使用中文。"
     user = (
         "请返回严格 JSON，包含键：summary, issues (list), suggestions (list), pacing_score (1-10)。\n\n"
         f"章节计划：\n{plan}\n\n"
         f"草稿：\n{draft}\n"
     )
-    return [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ]
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", system),
+            ("user", user),
+        ]
+    )
 
 
 def build_anti_ai_cleanup_prompt(
     draft: str,
     forbidden_terms: List[str],
-) -> List[Dict[str, str]]:
-    system = (
-        "你是一名编辑，负责移除过度使用的网文词汇。"
-        "用中文写作并保持原意。"
-    )
+) -> ChatPromptTemplate:
+    system = "你是一名编辑，负责移除过度使用的网文词汇。用中文写作并保持原意。"
     user = (
         "请从草稿中移除任何禁用词。"
         "如果直接删除会破坏语义，请改写句子以保留含义。"
@@ -138,41 +171,43 @@ def build_anti_ai_cleanup_prompt(
         f"禁用词：\n{forbidden_terms}\n\n"
         f"草稿：\n{draft}\n"
     )
-    return [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ]
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", system),
+            ("user", user),
+        ]
+    )
 
 
 def build_director_revision_prompt(
-    plan: Dict[str, Any],
     draft: str,
     post_check: Dict[str, Any],
     style_guide: str,
     chapter_min_chars: int,
     chapter_max_chars: int,
-) -> List[Dict[str, str]]:
+) -> ChatPromptTemplate:
     system = style_guide
     user = (
-        f"编辑意见：\\n{post_check}\\n\\n"
-        f"待修订草稿：\\n{draft}\\n\\n"
+        f"编辑意见：\n{post_check}\n\n"
+        f"待修订草稿：\n{draft}\n\n"
         "请根据问题与建议修订草稿。"
         "输出完整修订稿，使用 Markdown，不要代码围栏。"
-        f"目标字数：{chapter_min_chars}-{chapter_max_chars} 字。\\n\\n"
+        f"目标字数：{chapter_min_chars}-{chapter_max_chars} 字。\n\n"
     )
-    return [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ]
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", system),
+            ("user", user),
+        ]
+    )
 
 
 def build_director_final_prompt(
-    plan: Dict[str, Any],
     draft: str,
     style_guide: str,
     chapter_min_chars: int,
     chapter_max_chars: int,
-) -> List[Dict[str, str]]:
+) -> ChatPromptTemplate:
     system = style_guide
     user = (
         f"待定稿草稿：\n{draft}\n\n"
@@ -181,7 +216,9 @@ def build_director_final_prompt(
         "输出完整章节，使用 Markdown，不要代码围栏。"
         f"目标字数：{chapter_min_chars}-{chapter_max_chars} 字。\n\n"
     )
-    return [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ]
+    return ChatPromptTemplate.from_messages(
+        [
+            ("system", system),
+            ("user", user),
+        ]
+    )

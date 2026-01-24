@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from .chains import (
+    build_agent_contribution_chain,
+    build_anti_ai_cleanup_chain,
+    build_draft_chain,
+    build_final_chain,
+    build_plan_chain,
+    build_post_check_chain,
+    build_revision_chain,
+)
 from .config_loader import get_api_key, load_env, load_text, load_yaml
-from .deepseek_client import DeepSeekClient
+from .langchain_client import LangChainClient, format_messages
+from .parsers import parse_json_with_repair
 from .prompting import (
     build_agent_contribution_prompt,
     build_anti_ai_cleanup_prompt,
@@ -13,6 +24,7 @@ from .prompting import (
     build_director_final_prompt,
     build_director_plan_prompt,
     build_director_revision_prompt,
+    build_draft_length_fix_prompt,
     build_post_check_prompt,
     compose_style_guide,
 )
@@ -20,16 +32,21 @@ from .utils import (
     FileLogger,
     build_agent_profile,
     extract_forbidden_terms,
-    extract_json,
     find_forbidden_terms,
     load_json,
     now_iso,
     save_json,
     slugify,
 )
+from .validators import (
+    validate_contribution,
+    validate_draft_length,
+    validate_plan,
+    validate_post_check,
+)
 
 
-class ChapterPipeline:
+class LangChainPipeline:
     def __init__(
         self,
         project_path: str = "config/project.yaml",
@@ -39,15 +56,8 @@ class ChapterPipeline:
         self.project_path = project_path
         self.project = load_yaml(project_path)
         self.api_key = get_api_key(self.project)
-        api = self.project["api"]
         self.logger = logger
-        self.client = DeepSeekClient(
-            base_url=api["base_url"],
-            api_key=self.api_key,
-            model=api["model"],
-            timeout_sec=api.get("timeout_sec", 120),
-            max_retries=api.get("max_retries", 3),
-        )
+        self.client = LangChainClient(self.project["api"], self.api_key)
 
     def run_plan(self, chapter_id: str | None = None) -> Dict[str, Any]:
         outline = self._load_outline()
@@ -59,7 +69,7 @@ class ChapterPipeline:
         generation = self.project["generation"]
 
         self._log_info(f"开始生成计划 chapter={chapter.get('id')} title={chapter.get('title')}")
-        messages = build_director_plan_prompt(
+        prompt = build_director_plan_prompt(
             outline=outline,
             chapter=chapter,
             style_guide=style_guide,
@@ -68,15 +78,10 @@ class ChapterPipeline:
             chapter_min_chars=generation["chapter_min_chars"],
             chapter_max_chars=generation["chapter_max_chars"],
         )
-        self._log_trace("计划-提示词", self._format_messages(messages))
-        response = self.client.chat(
-            messages,
-            temperature=generation["temperature"],
-            top_p=generation["top_p"],
-            stream=False,
-        )
-        self._log_trace("计划-响应(原文)", response)
-        plan = self._parse_json_response(response)
+        llm = self._build_llm(temperature=generation["temperature"], top_p=generation["top_p"])
+        chain = build_plan_chain(prompt, llm)
+        raw = self._invoke_chain(chain, prompt, stage="计划")
+        plan = self._parse_plan(raw, generation)
         if not plan:
             self._log_info("计划解析失败")
             raise RuntimeError("Failed to parse chapter plan JSON.")
@@ -107,45 +112,16 @@ class ChapterPipeline:
             self._log_info(f"未找到计划，开始生成 chapter={chapter.get('id')} title={chapter.get('title')}")
             plan = self.run_plan(chapter["id"])
 
-        contributions = {}
-        versions: list[Dict[str, Any]] = []
-        agents = self._resolve_agents(plan, chapter)
-        self._log_info(
-            "本章参与Agent: "
-            + ", ".join(f"{agent.get('id')}({agent.get('name')})" for agent in agents)
+        contributions = self._collect_contributions(
+            plan=plan,
+            chapter=chapter,
+            shared_style=shared_style,
+            previous_summary=previous_summary,
         )
-        for agent in agents:
-            style_guide = self._compose_style_guide(
-                agent["id"],
-                shared_style,
-                component_ids=agent,
-            )
-            messages = build_agent_contribution_prompt(
-                agent=agent,
-                plan=plan,
-                style_guide=style_guide,
-                previous_summary=previous_summary,
-            )
-            self._log_info(f"Agent贡献开始 id={agent.get('id')} name={agent.get('name')}")
-            self._log_trace(
-                f"Agent-{agent.get('id')}-提示词",
-                self._format_messages(messages),
-            )
-            response = self.client.chat(
-                messages,
-                temperature=generation["temperature"],
-                top_p=generation["top_p"],
-                stream=False,
-            )
-            contributions[agent["id"]] = response.strip()
-            self._log_trace(f"Agent-{agent.get('id')}-响应", response.strip())
-            self._log_info(
-                f"Agent贡献完成 id={agent.get('id')} 字数={len(response.strip())}"
-            )
 
         stream = api.get("stream", False) if stream_override is None else stream_override
         style_guide = self._compose_style_guide("director", shared_style, stage="draft")
-        messages = build_director_draft_prompt(
+        prompt = build_director_draft_prompt(
             plan=plan,
             contributions=contributions,
             style_guide=style_guide,
@@ -153,42 +129,39 @@ class ChapterPipeline:
             chapter_max_chars=generation["chapter_max_chars"],
             draft_examples=draft_examples,
         )
-        self._log_trace("成稿-提示词", self._format_messages(messages))
-
         output_path = self._chapter_output_path(plan)
         if output_path.exists() and not force:
             raise RuntimeError(f"Chapter file exists: {output_path}")
 
         self._log_info(f"开始生成章节成稿 stream={stream}")
-        draft = self._write_draft(output_path, messages, generation, stream)
-        self._log_trace("成稿-正文", draft)
-        versions.append(self._archive_draft(output_path, draft, stage="draft"))
-        self._log_info(f"章节成稿生成完成 字数={len(draft)} 输出={output_path}")
-
-        post_messages = build_post_check_prompt(plan, draft)
-        self._log_trace("修订-复核-提示词", self._format_messages(post_messages))
-        post_response = self.client.chat(
-            post_messages,
-            temperature=generation["temperature"],
-            top_p=generation["top_p"],
-            stream=False,
+        draft, versions = self._generate_draft_versions(
+            plan=plan,
+            prompt=prompt,
+            style_guide=style_guide,
+            output_path=output_path,
+            generation=generation,
+            stream=stream,
         )
-        self._log_trace("修订-复核-响应(原文)", post_response)
-        post_check = self._parse_json_response(post_response) or {}
-        self._log_trace("修订-复核-解析后", json.dumps(post_check, ensure_ascii=False, indent=2))
+
+        post_check = self._post_check(plan, draft, generation)
 
         if generation.get("max_turns", 1) > 1 and post_check.get("suggestions"):
             style_guide = self._compose_style_guide("director", shared_style, stage="revision")
-            revision_messages = build_director_revision_prompt(
-                plan=plan,
+            revision_prompt = build_director_revision_prompt(
                 draft=draft,
                 post_check=post_check,
                 style_guide=style_guide,
                 chapter_min_chars=generation["chapter_min_chars"],
                 chapter_max_chars=generation["chapter_max_chars"],
             )
-            self._log_trace("修订-改稿-提示词", self._format_messages(revision_messages))
-            draft = self._write_draft(output_path, revision_messages, generation, stream)
+            draft = self._rewrite_draft(
+                prompt=revision_prompt,
+                output_path=output_path,
+                generation=generation,
+                stream=stream,
+                stage="修订-改稿",
+                chain_builder=build_revision_chain,
+            )
             self._log_trace("修订-改稿-正文", draft)
             versions.append(self._archive_draft(output_path, draft, stage="revision"))
 
@@ -198,12 +171,18 @@ class ChapterPipeline:
             if matched_terms:
                 self._log_info(f"反AI审核命中高频词: {', '.join(matched_terms)}")
                 self._log_trace("修订-反AI-命中词", ", ".join(matched_terms))
-                cleanup_messages = build_anti_ai_cleanup_prompt(
+                cleanup_prompt = build_anti_ai_cleanup_prompt(
                     draft=draft,
                     forbidden_terms=matched_terms,
                 )
-                self._log_trace("修订-反AI-提示词", self._format_messages(cleanup_messages))
-                draft = self._write_draft(output_path, cleanup_messages, generation, stream)
+                draft = self._rewrite_draft(
+                    prompt=cleanup_prompt,
+                    output_path=output_path,
+                    generation=generation,
+                    stream=stream,
+                    stage="修订-反AI",
+                    chain_builder=build_anti_ai_cleanup_chain,
+                )
                 self._log_trace("修订-反AI-正文", draft)
             else:
                 self._log_info("反AI审核未命中高频词，跳过清理")
@@ -211,15 +190,20 @@ class ChapterPipeline:
             self._log_info("反AI审核规则为空，跳过清理")
 
         style_guide = self._compose_style_guide("director", shared_style, stage="final")
-        final_messages = build_director_final_prompt(
-            plan=plan,
+        final_prompt = build_director_final_prompt(
             draft=draft,
             style_guide=style_guide,
             chapter_min_chars=generation["chapter_min_chars"],
             chapter_max_chars=generation["chapter_max_chars"],
         )
-        self._log_trace("终审-提示词", self._format_messages(final_messages))
-        draft = self._write_draft(output_path, final_messages, generation, stream)
+        draft = self._rewrite_draft(
+            prompt=final_prompt,
+            output_path=output_path,
+            generation=generation,
+            stream=stream,
+            stage="终审",
+            chain_builder=build_final_chain,
+        )
         self._log_trace("终审-正文", draft)
         versions.append(self._archive_draft(output_path, draft, stage="final"))
         self._log_info(f"终审完成 字数={len(draft)} 输出={output_path}")
@@ -228,36 +212,240 @@ class ChapterPipeline:
         self._save_state(state)
         return {"plan": plan, "draft_path": str(output_path), "post_check": post_check}
 
-    def _write_draft(
+    def _generate_draft_versions(
         self,
+        *,
+        plan: Dict[str, Any],
+        prompt,
+        style_guide: str,
         output_path: Path,
-        messages,
         generation: Dict[str, Any],
         stream: bool,
+    ) -> tuple[str, list[Dict[str, Any]]]:
+        versions: list[Dict[str, Any]] = []
+        draft = self._rewrite_draft(
+            prompt=prompt,
+            output_path=output_path,
+            generation=generation,
+            stream=stream,
+            stage="成稿",
+            chain_builder=build_draft_chain,
+        )
+        self._log_trace("成稿-正文", draft)
+        length_errors = validate_draft_length(
+            draft,
+            min_chars=generation["chapter_min_chars"],
+            max_chars=generation["chapter_max_chars"],
+        )
+        if length_errors:
+            self._log_info(f"成稿字数未达标: {'; '.join(length_errors)}")
+            mode = "expand" if any("不足" in item for item in length_errors) else "compress"
+            fix_prompt = build_draft_length_fix_prompt(
+                plan=plan,
+                draft=draft,
+                style_guide=style_guide,
+                chapter_min_chars=generation["chapter_min_chars"],
+                chapter_max_chars=generation["chapter_max_chars"],
+                mode=mode,
+            )
+            draft = self._rewrite_draft(
+                prompt=fix_prompt,
+                output_path=output_path,
+                generation=generation,
+                stream=stream,
+                stage="成稿-补写" if mode == "expand" else "成稿-压缩",
+                chain_builder=build_draft_chain,
+            )
+            self._log_trace("成稿-正文", draft)
+            followup_errors = validate_draft_length(
+                draft,
+                min_chars=generation["chapter_min_chars"],
+                max_chars=generation["chapter_max_chars"],
+            )
+            if followup_errors:
+                self._log_info(f"成稿字数仍未达标: {'; '.join(followup_errors)}")
+        versions.append(self._archive_draft(output_path, draft, stage="draft"))
+        self._log_info(f"章节成稿生成完成 字数={len(draft)} 输出={output_path}")
+        return draft, versions
+
+    def _rewrite_draft(
+        self,
+        *,
+        prompt,
+        output_path: Path,
+        generation: Dict[str, Any],
+        stream: bool,
+        stage: str,
+        chain_builder,
     ) -> str:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
         if stream:
-            chunks = []
-            with output_path.open("w", encoding="utf-8") as handle:
-                for chunk in self.client.chat(
-                    messages,
+            try:
+                llm = self._build_llm(
                     temperature=generation["temperature"],
                     top_p=generation["top_p"],
-                    stream=True,
-                ):
-                    handle.write(chunk)
-                    handle.flush()
-                    chunks.append(chunk)
-            return "".join(chunks)
+                    streaming=True,
+                )
+                chain = chain_builder(prompt, llm)
+                return self._stream_chain_to_file(chain, prompt, output_path, stage)
+            except Exception:
+                self._log_info("流式失败，回退为非流式")
+        llm = self._build_llm(temperature=generation["temperature"], top_p=generation["top_p"], streaming=False)
+        chain = chain_builder(prompt, llm)
+        result = self._invoke_chain(chain, prompt, stage=stage, response_title=None)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(result, encoding="utf-8")
+        return result
 
-        draft = self.client.chat(
-            messages,
-            temperature=generation["temperature"],
-            top_p=generation["top_p"],
-            stream=False,
+    def _post_check(self, plan: Dict[str, Any], draft: str, generation: Dict[str, Any]) -> Dict[str, Any]:
+        post_prompt = build_post_check_prompt(plan, draft)
+        llm = self._build_llm(temperature=generation["temperature"], top_p=generation["top_p"])
+        chain = build_post_check_chain(post_prompt, llm)
+        raw = self._invoke_chain(chain, post_prompt, stage="修订-复核")
+        post_check = self._parse_post_check(raw)
+        if post_check is None:
+            post_check = {}
+        self._log_trace("修订-复核-解析后", json.dumps(post_check, ensure_ascii=False, indent=2))
+        return post_check
+
+    def _collect_contributions(
+        self,
+        *,
+        plan: Dict[str, Any],
+        chapter: Dict[str, Any],
+        shared_style: str,
+        previous_summary: str | None,
+    ) -> Dict[str, Any]:
+        generation = self.project["generation"]
+        agents = self._resolve_agents(plan, chapter)
+        self._log_info(
+            "本章参与Agent: "
+            + ", ".join(f"{agent.get('id')}({agent.get('name')})" for agent in agents)
         )
-        output_path.write_text(draft, encoding="utf-8")
-        return draft
+        concurrency = max(1, int(generation.get("agent_concurrency", 1)))
+        contributions: Dict[str, Any] = {}
+        if concurrency == 1 or len(agents) <= 1:
+            for agent in agents:
+                contribution = self._run_agent_contribution(
+                    agent=agent,
+                    plan=plan,
+                    shared_style=shared_style,
+                    previous_summary=previous_summary,
+                    generation=generation,
+                )
+                contributions[agent["id"]] = contribution
+            return contributions
+
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = {
+                executor.submit(
+                    self._run_agent_contribution,
+                    agent=agent,
+                    plan=plan,
+                    shared_style=shared_style,
+                    previous_summary=previous_summary,
+                    generation=generation,
+                ): agent
+                for agent in agents
+            }
+            for future in as_completed(futures):
+                agent = futures[future]
+                contribution = future.result()
+                contributions[agent["id"]] = contribution
+        return contributions
+
+    def _run_agent_contribution(
+        self,
+        *,
+        agent: Dict[str, Any],
+        plan: Dict[str, Any],
+        shared_style: str,
+        previous_summary: str | None,
+        generation: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        style_guide = self._compose_style_guide(
+            agent["id"],
+            shared_style,
+            component_ids=agent,
+        )
+        prompt = build_agent_contribution_prompt(
+            agent=agent,
+            plan=plan,
+            style_guide=style_guide,
+            previous_summary=previous_summary,
+        )
+        llm = self._build_llm(temperature=generation["temperature"], top_p=generation["top_p"])
+        chain = build_agent_contribution_chain(prompt, llm)
+        self._log_info(f"Agent贡献开始 id={agent.get('id')} name={agent.get('name')}")
+        raw = self._invoke_chain(chain, prompt, stage=f"Agent-{agent.get('id')}", response_title="响应")
+        contribution = self._parse_contribution(raw)
+        if not contribution:
+            raise RuntimeError(f"Agent贡献解析失败: {agent.get('id')}")
+        self._log_info(
+            f"Agent贡献完成 id={agent.get('id')} 字数={len(raw.strip())}"
+        )
+        return contribution
+
+    def _parse_plan(self, raw: str, generation: Dict[str, Any]) -> Dict[str, Any] | None:
+        hint = (
+            "字段: chapter_id, title, goal, beats(list), cast(list), conflicts(list), "
+            "pacing_notes, word_target(数字)。"
+            f"word_target 必须在 {generation['chapter_min_chars']} 到 {generation['chapter_max_chars']} 之间，"
+            f"cast 数量 <= {generation['max_agents_per_chapter']}。"
+        )
+        return self._parse_json(raw, hint, lambda value: validate_plan(
+            value,
+            min_chars=generation["chapter_min_chars"],
+            max_chars=generation["chapter_max_chars"],
+            max_agents=generation["max_agents_per_chapter"],
+        ))
+
+    def _parse_post_check(self, raw: str) -> Dict[str, Any] | None:
+        hint = "字段: summary, issues(list), suggestions(list), pacing_score(1-10)。"
+        return self._parse_json(raw, hint, validate_post_check)
+
+    def _parse_contribution(self, raw: str) -> Dict[str, Any] | None:
+        hint = "字段: agent_id, name, highlights(list, 6-10 条)。"
+        return self._parse_json(raw, hint, validate_contribution)
+
+    def _parse_json(self, raw: str, schema_hint: str, validator) -> Dict[str, Any] | None:
+        repair_llm = self._build_llm(temperature=0, top_p=1)
+        current = raw
+        for attempt in range(3):
+            parsed = parse_json_with_repair(
+                current,
+                llm=repair_llm,
+                schema_hint=schema_hint,
+                max_attempts=1,
+            )
+            if not parsed:
+                current = raw
+                continue
+            errors = validator(parsed)
+            if not errors:
+                return parsed
+            schema_hint = f"{schema_hint}\n校验错误: {'; '.join(errors)}"
+            current = json.dumps(parsed, ensure_ascii=False)
+        return None
+
+    def _invoke_chain(self, chain, prompt, *, stage: str, response_title: str | None = "响应(原文)") -> str:
+        messages = prompt.format_messages()
+        self._log_trace(f"{stage}-提示词", format_messages(messages))
+        result = chain.invoke({})
+        if response_title:
+            self._log_trace(f"{stage}-{response_title}", result)
+        return result
+
+    def _stream_chain_to_file(self, chain, prompt, output_path: Path, stage: str) -> str:
+        messages = prompt.format_messages()
+        self._log_trace(f"{stage}-提示词", format_messages(messages))
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        chunks: list[str] = []
+        with output_path.open("w", encoding="utf-8") as handle:
+            for chunk in chain.stream({}):
+                handle.write(chunk)
+                handle.flush()
+                chunks.append(chunk)
+        return "".join(chunks)
 
     def _archive_draft(
         self,
@@ -485,15 +673,6 @@ class ChapterPipeline:
             return None
         return json.loads(plan_path.read_text(encoding="utf-8"))
 
-    def _parse_json_response(self, response: str) -> Dict[str, Any] | None:
-        json_text = extract_json(response)
-        if not json_text:
-            return None
-        try:
-            return json.loads(json_text)
-        except json.JSONDecodeError:
-            return None
-
     def _update_state(
         self,
         state: Dict[str, Any],
@@ -518,6 +697,13 @@ class ChapterPipeline:
         }
         return state
 
+    def _build_llm(self, *, temperature: float, top_p: float, streaming: bool = False):
+        return self.client.build_llm(
+            temperature=temperature,
+            top_p=top_p,
+            streaming=streaming,
+        )
+
     def _log_info(self, message: str) -> None:
         if self.logger:
             self.logger.info(message)
@@ -525,11 +711,3 @@ class ChapterPipeline:
     def _log_trace(self, title: str, content: str) -> None:
         if self.logger:
             self.logger.trace_block(title, content)
-
-    def _format_messages(self, messages) -> str:
-        blocks = []
-        for message in messages:
-            role = message.get("role", "unknown")
-            content = message.get("content", "")
-            blocks.append(f"[{role}]\n{content}")
-        return "\n\n".join(blocks)

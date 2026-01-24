@@ -1,6 +1,6 @@
 # 工程架构梳理
 
-- 当前梳理时间: 2026-01-24 17:26:40
+- 当前梳理时间: 2026-01-24 22:57:01
 
 ## 项目概览
 
@@ -13,28 +13,32 @@
 ### 入口与启动
 
 - 入口文件/命令: `src/cli.py`，通过 `uv run python -m src.cli plan|chapter` 启动
-- 启动流程概述: CLI 解析参数 -> 初始化 `ChapterPipeline` -> 执行计划或成稿流程
+- 启动流程概述: CLI 解析参数 -> 初始化 `LangChainPipeline` -> 执行计划或成稿流程
 
 ### 核心模块
 
-- `src/pipeline.py`: 负责加载配置与素材，组织计划生成、角色贡献、成稿、修订、终审与状态落盘
-- `src/prompting.py`: 组装导演计划/成稿/修订/终审提示词与风格提示语，成稿提示词可注入示例段落与学习特点，并在计划与成稿提示词中加入“先预演三版后择优输出”的质量指引，风格提示语注入 system 提示词
-- `src/deepseek_client.py`: 与 DeepSeek API 通讯，支持流式输出
+- `src/langchain_pipeline.py`: LangChain/LCEL 主流水线，组织计划生成、角色贡献、成稿、复核、修订、反AI清理、终审与状态落盘
+- `src/langchain_client.py`: LangChain ChatOpenAI 包装，连接 DeepSeek OpenAI 兼容接口并提供流式/非流式实例
+- `src/chains/*`: 分阶段 LCEL 链（计划/角色贡献/成稿/复核/修订/反AI/终审）
+- `src/prompting.py`: ChatPromptTemplate 提示词与风格提示语拼接，包含成稿字数修正提示词
+- `src/parsers.py`: JSON 提取与自修复解析
+- `src/validators.py`: 计划/复核/贡献 JSON 校验与正文长度检查
 - `src/config_loader.py`: 读取 YAML/文本配置与环境变量
 - `src/utils.py`: 通用工具、角色画像合成与日志写入
 
 ### 依赖关系
 
-- 外部依赖: `requests`、`pyyaml`、`python-dotenv`
-- 内部依赖: `src` 下的 pipeline/prompting/config_loader/utils 相互协作
+- 外部依赖: `langchain`、`langchain-openai`、`langgraph`、`pyyaml`、`python-dotenv`
+- 内部依赖: `src/langchain_pipeline.py` 调用 chains/prompting/parsers/validators/langchain_client/config_loader/utils 协作完成主流程
 
 ### 数据流/控制流
 
-- 大纲 `config/outline.yaml` -> 计划 `data/plans/{chapter}.json`
+- 大纲 `config/outline.yaml` -> 计划链路 -> 计划 `data/plans/{chapter}.json`（JSON 解析与自修复）
 - 计划提示词中的 Series outline 仅使用系列/世界观概要，不包含 chapters，章节种子单独传入
 - 角色组件 `config/style_guide/components/{personality|background|identity}/*.md` + 角色配置 `config/agents.yaml`（主角/配角按角色名，龙套使用 archetype） -> 角色画像（含 traits）
-- 角色画像 + 角色提示语 -> 角色贡献 -> 导演成稿 -> 编辑复核 JSON -> 修订（`max_turns`>1 且 suggestions 非空时触发） -> 反AI高频词审核清理 -> 终审 -> 状态写入 `data/state.json`
+- 角色画像 + 角色提示语 -> 角色贡献链路（JSON 解析与自修复） -> 导演成稿链路 -> 编辑复核 JSON -> 修订（`max_turns`>1 且 suggestions 非空时触发） -> 反AI高频词审核清理 -> 终审 -> 状态写入 `data/state.json`
 - 编辑复核输出 JSON（summary/issues/suggestions/pacing_score），并作为后续修订与状态摘要来源
+- 成稿字数不达标时触发补写/压缩修正链路
 - 成稿提示词 = 章节计划 + 角色贡献 + 风格提示语 + 成稿示例段落（学习特点）
 - 成稿/修订/终审正文 -> 最新正文写入 `chapters/{chapter_id}_{slug}.md` -> 版本归档写入 `chapters/history/{chapter_id}_{slug}_成稿.md` / `chapters/history/{chapter_id}_{slug}_修订一.md` / `chapters/history/{chapter_id}_{slug}_终审.md` -> 版本索引写入 `data/state.json`
 - 风格提示语由 `config/style_guide/anti_ai_rules.md`、`config/style_guide/agents/{角色名}.md`（主角/配角）与 `config/style_guide/agents/{暴烈型|谨慎型|仁善型|冷静型}.md`（龙套类）、`config/style_guide/agents/director/{plan|draft|revision|final}.md` 与 `config/style_guide/components/{type}/{id}.md` 组合后注入 system 提示词
@@ -61,14 +65,21 @@
 - `config/style_guide/draft_examples.yaml`: 成稿示例段落与学习特点列表
 - `config/style_guide/components/`: 性格/背景/身份提示语
 - `.env`: API Key（`DEEPSEEK_API_KEY`）
+- `config/project.yaml` 新增 `generation.agent_concurrency` 与 `dialogue.*` 并保持向后兼容
 
 ### 运行流程
 
 - 运行步骤: plan 生成计划 -> chapter 生成成稿并可流式输出 -> 编辑复核 JSON -> 修订（满足条件时） -> 反AI高频词审核清理 -> 终审（无条件执行） -> 每次成稿/修订/终审归档版本
-- 异常/边界处理: 缺少 API Key 直接报错；章节文件已存在且未 `--force` 则中止
+- 异常/边界处理: 缺少 API Key 直接报错；章节文件已存在且未 `--force` 则中止；流式失败自动回退为非流式
 - 观测与日志: `--trace` 写入 `logs/trace_{chapter}_{YYYY-MM-DD_HH:mm:ss}.log`，章节状态写入 `data/state.json`
 
 ## 改动概要/变更记录
+
+### 2026-01-24 22:57:01
+
+- 本次新增/更新要点: 主流水线切换为 LangChain/LCEL，新增链路/解析/校验模块并移除旧 pipeline/deepseek_client，实现流式回退与字数修正，CLI 仅保留新链路
+- 变更动机/需求来源: 用户要求根据 LangChain 重构设计文档重构工程且无需保留旧接口旧代码
+- 当前更新时间: 2026-01-24 22:57:01
 
 ### 2026-01-24 17:26:40
 

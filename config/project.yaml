@@ -15,8 +15,14 @@ generation:
   chapter_max_chars: 5000
   max_agents_per_chapter: 10
   max_turns: 2
+  agent_concurrency: 3
   temperature: 1.5
   top_p: 0.8
+
+dialogue:
+  max_concurrency: 3
+  memory_summary_every: 10
+  memory_summary_threshold: 30
 
 paths:
   agents: "config/agents.yaml"

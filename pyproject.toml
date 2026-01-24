@@ -5,9 +5,12 @@ description = "Multi-agent novel drafting CLI."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "langchain",
+  "langchain-openai",
+  "langgraph",
   "pyyaml",
-  "requests",
   "python-dotenv",
+  "langchain-deepseek>=1.0.1",
 ]
 
 [dependency-groups]
