@@ -1,6 +1,6 @@
 # 工程架构梳理
 
-- 当前梳理时间: 2026-01-13 23:37:46
+- 当前梳理时间: 2026-01-24 15:56:46
 
 ## 项目概览
 
@@ -18,7 +18,7 @@
 ### 核心模块
 
 - `src/pipeline.py`: 负责加载配置与素材，组织计划生成、角色贡献、成稿、修订、终审与状态落盘
-- `src/prompting.py`: 组装导演计划/成稿/修订/终审提示词与风格提示语，风格提示语注入 system 提示词
+- `src/prompting.py`: 组装导演计划/成稿/修订/终审提示词与风格提示语，成稿提示词可注入示例段落与学习特点，并在计划与成稿提示词中加入“先预演三版后择优输出”的质量指引，风格提示语注入 system 提示词
 - `src/deepseek_client.py`: 与 DeepSeek API 通讯，支持流式输出
 - `src/config_loader.py`: 读取 YAML/文本配置与环境变量
 - `src/utils.py`: 通用工具、角色画像合成与日志写入
@@ -34,6 +34,7 @@
 - 计划提示词中的 Series outline 仅使用系列/世界观概要，不包含 chapters，章节种子单独传入
 - 角色组件 `config/style_guide/components/{personality|background|identity}/*.md` + 角色配置 `config/agents.yaml`（主角/配角按角色名，龙套使用 archetype） -> 角色画像（含 traits）
 - 角色画像 + 角色提示语 -> 角色贡献 -> 导演成稿 -> 修订（编辑复核 + 导演修订） -> 反AI高频词审核清理 -> 终审 -> 状态写入 `data/state.json`
+- 成稿提示词 = 章节计划 + 角色贡献 + 风格提示语 + 成稿示例段落（学习特点）
 - 成稿/修订/终审正文 -> 最新正文写入 `chapters/{chapter_id}_{slug}.md` -> 版本归档写入 `chapters/history/{chapter_id}_{slug}_成稿.md` / `chapters/history/{chapter_id}_{slug}_修订一.md` / `chapters/history/{chapter_id}_{slug}_终审.md` -> 版本索引写入 `data/state.json`
 - 风格提示语由 `config/style_guide/anti_ai_rules.md`、`config/style_guide/agents/{角色名}.md`（主角/配角）与 `config/style_guide/agents/{暴烈型|谨慎型|仁善型|冷静型}.md`（龙套类）、`config/style_guide/agents/director/{plan|draft|revision|final}.md` 与 `config/style_guide/components/{type}/{id}.md` 组合后注入 system 提示词
 
@@ -56,6 +57,7 @@
 - `config/style_guide/agents/director/draft.md`: 导演成稿提示语
 - `config/style_guide/agents/director/revision.md`: 导演修订提示语
 - `config/style_guide/agents/director/final.md`: 导演终审提示语
+- `config/style_guide/draft_examples.yaml`: 成稿示例段落与学习特点列表
 - `config/style_guide/components/`: 性格/背景/身份提示语
 - `.env`: API Key（`DEEPSEEK_API_KEY`）
 
@@ -66,6 +68,18 @@
 - 观测与日志: `--trace` 写入 `logs/trace_{chapter}_{YYYY-MM-DD_HH:mm:ss}.log`，章节状态写入 `data/state.json`
 
 ## 改动概要/变更记录
+
+### 2026-01-24 15:56:46
+
+- 本次新增/更新要点: 计划与成稿提示词新增“先预演三版并择优输出”的质量指引，并同步架构说明
+- 变更动机/需求来源: 用户要求提升生成质量，要求先预演三个版本再输出最佳版本
+- 当前更新时间: 2026-01-24 15:56:46
+
+### 2026-01-23 23:29:51
+
+- 本次新增/更新要点: 成稿提示词支持示例段落与学习特点列表，并新增对应配置文件路径
+- 变更动机/需求来源: 用户要求在成稿环节附上示例文章段落列表，每段落附带学习特点
+- 当前更新时间: 2026-01-23 23:29:51
 
 ### 2026-01-13 23:37:46
 

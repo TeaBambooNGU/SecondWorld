@@ -94,6 +94,7 @@ class ChapterPipeline:
         outline = self._load_outline()
         chapter = self._select_chapter(outline, chapter_id)
         shared_style = self._load_style_guide_shared()
+        draft_examples = self._load_draft_examples()
         state = self._load_state()
         previous_summary = self._previous_summary(state)
         generation = self.project["generation"]
@@ -150,6 +151,7 @@ class ChapterPipeline:
             style_guide=style_guide,
             chapter_min_chars=generation["chapter_min_chars"],
             chapter_max_chars=generation["chapter_max_chars"],
+            draft_examples=draft_examples,
         )
         self._log_trace("成稿-提示词", self._format_messages(messages))
 
@@ -335,6 +337,25 @@ class ChapterPipeline:
 
     def _load_style_guide_shared(self) -> str:
         return load_text(self.project["paths"]["style_guide_shared"])
+
+    def _load_draft_examples(self) -> list[Dict[str, Any]]:
+        path = self.project.get("paths", {}).get("style_guide_draft_examples")
+        if not path:
+            self._log_info("未配置成稿示例段落路径")
+            return []
+        try:
+            draft_data = load_yaml(path)
+        except FileNotFoundError:
+            self._log_info(f"未找到成稿示例段落文件: {path}")
+            return []
+        if not isinstance(draft_data, dict):
+            self._log_info(f"成稿示例段落配置格式错误: {path}")
+            return []
+        examples = draft_data.get("examples", [])
+        if not isinstance(examples, list):
+            self._log_info(f"成稿示例段落配置格式错误: {path}")
+            return []
+        return examples
 
     def _load_style_guide_agent(self, agent_id: str, stage: str | None = None) -> str:
         agents_dir = Path(self.project["paths"]["style_guide_agents_dir"])

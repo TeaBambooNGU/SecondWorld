@@ -1,4 +1,4 @@
-from src.prompting import build_director_plan_prompt, compose_style_guide
+from src.prompting import build_director_draft_prompt, build_director_plan_prompt, compose_style_guide
 from src.utils import build_agent_profile
 
 
@@ -41,6 +41,26 @@ def test_build_director_plan_prompt_includes_foreshadowing_reference():
     assert "暗线参考" in user_content
     assert "暗线示例" in user_content
     assert "foreshadowing" not in user_content
+
+
+def test_build_director_draft_prompt_includes_examples():
+    plan = {"chapter_id": "0001", "title": "Test Chapter"}
+    contributions = {"agent": "贡献"}
+    examples = [
+        {"paragraph": "示例段落", "traits": ["节奏紧凑", "对话有张力"]},
+    ]
+    messages = build_director_draft_prompt(
+        plan=plan,
+        contributions=contributions,
+        style_guide="Style",
+        chapter_min_chars=2000,
+        chapter_max_chars=4000,
+        draft_examples=examples,
+    )
+    user_content = messages[1]["content"]
+    assert "示例段落" in user_content
+    assert "节奏紧凑" in user_content
+    assert "对话有张力" in user_content
 
 
 def test_compose_style_guide():

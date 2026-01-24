@@ -24,6 +24,7 @@ paths:
   style_guide_shared: "config/style_guide/anti_ai_rules.md"
   style_guide_agents_dir: "config/style_guide/agents"
   style_guide_components_dir: "config/style_guide/components"
+  style_guide_draft_examples: "config/style_guide/draft_examples.yaml"
   output_dir: "chapters"
   state_path: "data/state.json"
   plans_dir: "data/plans"
