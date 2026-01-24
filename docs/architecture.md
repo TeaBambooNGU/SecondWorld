@@ -1,6 +1,6 @@
 # 工程架构梳理
 
-- 当前梳理时间: 2026-01-24 15:56:46
+- 当前梳理时间: 2026-01-24 17:26:40
 
 ## 项目概览
 
@@ -33,7 +33,8 @@
 - 大纲 `config/outline.yaml` -> 计划 `data/plans/{chapter}.json`
 - 计划提示词中的 Series outline 仅使用系列/世界观概要，不包含 chapters，章节种子单独传入
 - 角色组件 `config/style_guide/components/{personality|background|identity}/*.md` + 角色配置 `config/agents.yaml`（主角/配角按角色名，龙套使用 archetype） -> 角色画像（含 traits）
-- 角色画像 + 角色提示语 -> 角色贡献 -> 导演成稿 -> 修订（编辑复核 + 导演修订） -> 反AI高频词审核清理 -> 终审 -> 状态写入 `data/state.json`
+- 角色画像 + 角色提示语 -> 角色贡献 -> 导演成稿 -> 编辑复核 JSON -> 修订（`max_turns`>1 且 suggestions 非空时触发） -> 反AI高频词审核清理 -> 终审 -> 状态写入 `data/state.json`
+- 编辑复核输出 JSON（summary/issues/suggestions/pacing_score），并作为后续修订与状态摘要来源
 - 成稿提示词 = 章节计划 + 角色贡献 + 风格提示语 + 成稿示例段落（学习特点）
 - 成稿/修订/终审正文 -> 最新正文写入 `chapters/{chapter_id}_{slug}.md` -> 版本归档写入 `chapters/history/{chapter_id}_{slug}_成稿.md` / `chapters/history/{chapter_id}_{slug}_修订一.md` / `chapters/history/{chapter_id}_{slug}_终审.md` -> 版本索引写入 `data/state.json`
 - 风格提示语由 `config/style_guide/anti_ai_rules.md`、`config/style_guide/agents/{角色名}.md`（主角/配角）与 `config/style_guide/agents/{暴烈型|谨慎型|仁善型|冷静型}.md`（龙套类）、`config/style_guide/agents/director/{plan|draft|revision|final}.md` 与 `config/style_guide/components/{type}/{id}.md` 组合后注入 system 提示词
@@ -63,11 +64,17 @@
 
 ### 运行流程
 
-- 运行步骤: plan 生成计划 -> chapter 生成成稿并可流式输出 -> 修订（编辑复核 + 导演修订） -> 反AI高频词审核清理 -> 终审（无条件执行） -> 每次成稿/修订/终审归档版本
+- 运行步骤: plan 生成计划 -> chapter 生成成稿并可流式输出 -> 编辑复核 JSON -> 修订（满足条件时） -> 反AI高频词审核清理 -> 终审（无条件执行） -> 每次成稿/修订/终审归档版本
 - 异常/边界处理: 缺少 API Key 直接报错；章节文件已存在且未 `--force` 则中止
 - 观测与日志: `--trace` 写入 `logs/trace_{chapter}_{YYYY-MM-DD_HH:mm:ss}.log`，章节状态写入 `data/state.json`
 
 ## 改动概要/变更记录
+
+### 2026-01-24 17:26:40
+
+- 本次新增/更新要点: 补充编辑复核 JSON 与修订触发条件说明，更新运行流程与梳理时间
+- 变更动机/需求来源: 用户要求梳理当前最新代码并生成 LangChain 重构设计文档
+- 当前更新时间: 2026-01-24 17:26:40
 
 ### 2026-01-24 15:56:46
 
