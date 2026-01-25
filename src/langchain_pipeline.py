@@ -174,6 +174,7 @@ class LangChainPipeline:
                 cleanup_prompt = build_anti_ai_cleanup_prompt(
                     draft=draft,
                     forbidden_terms=matched_terms,
+                    draft_examples=draft_examples,
                 )
                 draft = self._rewrite_draft(
                     prompt=cleanup_prompt,

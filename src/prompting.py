@@ -173,16 +173,42 @@ def build_post_check_prompt(
 def build_anti_ai_cleanup_prompt(
     draft: str,
     forbidden_terms: List[str],
+    draft_examples: List[Dict[str, Any]] | None = None,
 ) -> ChatPromptTemplate:
-    system = "你是一名编辑，负责移除过度使用的网文词汇。用中文写作并保持原意。"
+    system = (
+        "你是一位资深的语言风格转换与文本润色专家，擅长将 AI 生成文本改写为更接近人类写作的自然表达。"
+        "你能识别 AI 文本中的模板化语言、重复用语、情感缺失与逻辑生硬，并通过重写提升口语化与个性化。"
+        "关键原则：关注语义熵（词汇分布多样性）。目标语义熵 ≥ 0.72，低于 0.38 视为过度可预测。"
+        "自检公式：H = -Σ p(w)·log p(w)（p(w) 为词或短语的相对频率）。"
+        "低熵信号：高频词密度过高、句式/段落起手高度同构、连接词过度统一、节奏持续单一。"
+        "若低熵，必须通过改写句式、打散节奏、切换叙述视角与表达路径来提升多样性，禁止只做同义词替换。"
+        "允许适度情感增强，但不得新增剧情、角色或世界观信息，不得改变原有事件顺序与事实含义。"
+        "必须移除禁用词，禁用词不得出现在最终文本中。"
+    )
     user = (
-        "请从草稿中移除任何禁用词。"
-        "如果直接删除会破坏语义，请改写句子以保留含义。"
-        "不要新增剧情、角色或情感渲染。"
-        "输出完整章节，使用 Markdown，不要代码围栏。\n\n"
+        "任务：对全文进行人类化改写，降低 AI 痕迹并提升自然度。"
+        "请先识别模板化语言、重复词汇/句式、机械衔接与单一节奏，再进行全篇重写。"
+        "写作节奏需具备变化：长短句交替、动作/对话/心理描写穿插、快慢段落对比。"
+        "保持原意与逻辑连贯性，允许适度情感增强，但不新增剧情或角色。"
+        "输出完整章节，使用 Markdown，不要代码围栏，不要附加说明，也不要提及熵值或改写过程。\n\n"
         f"禁用词：\n{forbidden_terms}\n\n"
         f"草稿：\n{draft}\n"
     )
+    if draft_examples:
+        user += "\n人类写作节奏模板（学习特点，禁止直接复用原句或情节）：\n"
+        index = 1
+        for example in draft_examples:
+            paragraph = str(example.get("paragraph", "")).strip()
+            traits = example.get("traits") or []
+            if not paragraph and not traits:
+                continue
+            user += f"{index}. 段落:\n{paragraph}\n"
+            if traits:
+                traits_text = "、".join(str(item).strip() for item in traits if str(item).strip())
+                if traits_text:
+                    user += f"   学习特点: {traits_text}\n"
+            user += "\n"
+            index += 1
     system = escape_prompt_template(system)
     user = escape_prompt_template(user)
     return ChatPromptTemplate.from_messages(
