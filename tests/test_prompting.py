@@ -28,6 +28,23 @@ def test_build_director_plan_prompt():
     assert "严格 JSON" in messages[1].content
 
 
+def test_build_director_plan_prompt_allows_style_guide_braces():
+    outline = {"series": {"title": "Test"}, "chapters": []}
+    chapter = {"id": "0001", "title": "Test Chapter"}
+    style = "系统指令包含 {花括号} 字样"
+    prompt = build_director_plan_prompt(
+        outline=outline,
+        chapter=chapter,
+        style_guide=style,
+        previous_summary=None,
+        max_agents=4,
+        chapter_min_chars=2000,
+        chapter_max_chars=4000,
+    )
+    messages = prompt.format_messages()
+    assert "{花括号}" in messages[0].content
+
+
 def test_build_director_plan_prompt_includes_foreshadowing_reference():
     outline = {"series": {"title": "Test"}, "chapters": []}
     chapter = {

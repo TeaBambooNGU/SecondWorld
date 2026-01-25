@@ -3,6 +3,7 @@ project:
   language: "zh"
 
 api:
+  provider: "deepseek"
   base_url: "https://api.deepseek.com"
   model: "deepseek-reasoner"
   api_key_env: "DEEPSEEK_API_KEY"

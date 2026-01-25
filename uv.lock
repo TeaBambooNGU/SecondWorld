@@ -818,7 +818,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "langchain" },
-    { name = "langchain-deepseek", specifier = ">=1.0.1" },
+    { name = "langchain-deepseek" },
     { name = "langchain-openai" },
     { name = "langgraph" },
     { name = "python-dotenv" },

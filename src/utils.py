@@ -81,6 +81,10 @@ def find_forbidden_terms(text: str, terms: list[str]) -> list[str]:
     return list(dict.fromkeys(hits))
 
 
+def escape_prompt_template(text: str) -> str:
+    return text.replace("{", "{{").replace("}", "}}")
+
+
 def load_json(path: str | Path, default: Any) -> Any:
     path = Path(path)
     if not path.exists():

@@ -1,6 +1,6 @@
 # 工程架构梳理
 
-- 当前梳理时间: 2026-01-24 22:57:01
+- 当前梳理时间: 2026-01-25 15:19:29
 
 ## 项目概览
 
@@ -28,7 +28,7 @@
 
 ### 依赖关系
 
-- 外部依赖: `langchain`、`langchain-openai`、`langgraph`、`pyyaml`、`python-dotenv`
+- 外部依赖: `langchain`、`langchain-deepseek`、`langchain-openai`、`langgraph`、`pyyaml`、`python-dotenv`
 - 内部依赖: `src/langchain_pipeline.py` 调用 chains/prompting/parsers/validators/langchain_client/config_loader/utils 协作完成主流程
 
 ### 数据流/控制流
@@ -42,6 +42,8 @@
 - 成稿提示词 = 章节计划 + 角色贡献 + 风格提示语 + 成稿示例段落（学习特点）
 - 成稿/修订/终审正文 -> 最新正文写入 `chapters/{chapter_id}_{slug}.md` -> 版本归档写入 `chapters/history/{chapter_id}_{slug}_成稿.md` / `chapters/history/{chapter_id}_{slug}_修订一.md` / `chapters/history/{chapter_id}_{slug}_终审.md` -> 版本索引写入 `data/state.json`
 - 风格提示语由 `config/style_guide/anti_ai_rules.md`、`config/style_guide/agents/{角色名}.md`（主角/配角）与 `config/style_guide/agents/{暴烈型|谨慎型|仁善型|冷静型}.md`（龙套类）、`config/style_guide/agents/director/{plan|draft|revision|final}.md` 与 `config/style_guide/components/{type}/{id}.md` 组合后注入 system 提示词
+- 编辑复核阶段由 `build_post_check_prompt` 组装复核提示词，在 `LangChainPipeline._post_check` 中通过 `build_post_check_chain` 调用，阶段标记为“修订-复核”
+- 反AI清理阶段在命中高频词后触发，`build_anti_ai_cleanup_prompt` 组装清理提示词，在 `LangChainPipeline.run_chapter` 中通过 `build_anti_ai_cleanup_chain` 调用，阶段标记为“修订-反AI”
 
 ### 成稿版本留存
 
@@ -65,15 +67,51 @@
 - `config/style_guide/draft_examples.yaml`: 成稿示例段落与学习特点列表
 - `config/style_guide/components/`: 性格/背景/身份提示语
 - `.env`: API Key（`DEEPSEEK_API_KEY`）
-- `config/project.yaml` 新增 `generation.agent_concurrency` 与 `dialogue.*` 并保持向后兼容
+- `config/project.yaml` 新增 `api.provider`、`generation.agent_concurrency` 与 `dialogue.*` 并保持向后兼容
 
 ### 运行流程
 
 - 运行步骤: plan 生成计划 -> chapter 生成成稿并可流式输出 -> 编辑复核 JSON -> 修订（满足条件时） -> 反AI高频词审核清理 -> 终审（无条件执行） -> 每次成稿/修订/终审归档版本
 - 异常/边界处理: 缺少 API Key 直接报错；章节文件已存在且未 `--force` 则中止；流式失败自动回退为非流式
-- 观测与日志: `--trace` 写入 `logs/trace_{chapter}_{YYYY-MM-DD_HH:mm:ss}.log`，章节状态写入 `data/state.json`
+- 观测与日志: `--trace` 写入 `logs/trace_{chapter}_{YYYY-MM-DD_HH:mm:ss}.log`，章节状态写入 `data/state.json`，可选启用 LangSmith 跟踪
+
+### 观测与追踪（LangSmith）
+
+- 能力说明: 通过环境变量开启 LangSmith 跟踪，将链路执行追踪写入 LangSmith 项目
+- 默认行为: 设置 `LANGSMITH_API_KEY` 且未显式配置 `LANGSMITH_TRACING` 时，程序自动开启追踪
+- 环境变量示例:
+```
+export LANGSMITH_TRACING=true
+export LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+export LANGSMITH_API_KEY=lsv2_pt_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+export LANGSMITH_PROJECT=your_langsmith_project
+```
 
 ## 改动概要/变更记录
+
+### 2026-01-25 15:19:29
+
+- 本次新增/更新要点: 补充复核与反AI清理提示词的调用流程说明
+- 变更动机/需求来源: 用户询问 build_post_check_prompt 与 build_anti_ai_cleanup_prompt 的调用位置
+- 当前更新时间: 2026-01-25 15:19:29
+
+### 2026-01-25 14:34:11
+
+- 本次新增/更新要点: 补充 LangSmith 默认追踪开启逻辑说明
+- 变更动机/需求来源: 用户要求默认开启追踪并更新文档
+- 当前更新时间: 2026-01-25 14:34:11
+
+### 2026-01-25 14:02:15
+
+- 本次新增/更新要点: 架构文档新增 LangSmith 跟踪能力与环境变量说明
+- 变更动机/需求来源: 用户要求支持 LANGSMITH 跟踪并记录配置方式
+- 当前更新时间: 2026-01-25 14:02:15
+
+### 2026-01-24 23:14:07
+
+- 本次新增/更新要点: 新增 `api.provider` 与多模型类型工厂说明，补充 `langchain-deepseek` 依赖
+- 变更动机/需求来源: 用户要求默认使用 DeepSeek 并保留 openai 作为可配置 provider
+- 当前更新时间: 2026-01-24 23:14:07
 
 ### 2026-01-24 22:57:01
 

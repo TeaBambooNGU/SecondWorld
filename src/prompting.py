@@ -4,6 +4,8 @@ from typing import Any, Dict, List
 
 from langchain_core.prompts import ChatPromptTemplate
 
+from src.utils import escape_prompt_template
+
 
 def compose_style_guide(agent_style: str, shared_style: str) -> str:
     parts = [agent_style.strip(), shared_style.strip()]
@@ -40,6 +42,8 @@ def build_director_plan_prompt(
         )
     if previous_summary:
         user += f"上一章摘要：\n{previous_summary}\n\n"
+    system = escape_prompt_template(system)
+    user = escape_prompt_template(user)
     return ChatPromptTemplate.from_messages(
         [
             ("system", system),
@@ -64,6 +68,8 @@ def build_agent_contribution_prompt(
     )
     if previous_summary:
         user += f"\n上一章摘要：\n{previous_summary}\n"
+    system = escape_prompt_template(system)
+    user = escape_prompt_template(user)
     return ChatPromptTemplate.from_messages(
         [
             ("system", system),
@@ -104,6 +110,8 @@ def build_director_draft_prompt(
                     user += f"   学习特点: {traits_text}\n"
             user += "\n"
             index += 1
+    system = escape_prompt_template(system)
+    user = escape_prompt_template(user)
     return ChatPromptTemplate.from_messages(
         [
             ("system", system),
@@ -132,6 +140,8 @@ def build_draft_length_fix_prompt(
         f"{instruction}\n\n"
         "输出完整章节，使用 Markdown，不要代码围栏。\n"
     )
+    system = escape_prompt_template(system)
+    user = escape_prompt_template(user)
     return ChatPromptTemplate.from_messages(
         [
             ("system", system),
@@ -150,6 +160,8 @@ def build_post_check_prompt(
         f"章节计划：\n{plan}\n\n"
         f"草稿：\n{draft}\n"
     )
+    system = escape_prompt_template(system)
+    user = escape_prompt_template(user)
     return ChatPromptTemplate.from_messages(
         [
             ("system", system),
@@ -171,6 +183,8 @@ def build_anti_ai_cleanup_prompt(
         f"禁用词：\n{forbidden_terms}\n\n"
         f"草稿：\n{draft}\n"
     )
+    system = escape_prompt_template(system)
+    user = escape_prompt_template(user)
     return ChatPromptTemplate.from_messages(
         [
             ("system", system),
@@ -194,6 +208,8 @@ def build_director_revision_prompt(
         "输出完整修订稿，使用 Markdown，不要代码围栏。"
         f"目标字数：{chapter_min_chars}-{chapter_max_chars} 字。\n\n"
     )
+    system = escape_prompt_template(system)
+    user = escape_prompt_template(user)
     return ChatPromptTemplate.from_messages(
         [
             ("system", system),
@@ -216,6 +232,8 @@ def build_director_final_prompt(
         "输出完整章节，使用 Markdown，不要代码围栏。"
         f"目标字数：{chapter_min_chars}-{chapter_max_chars} 字。\n\n"
     )
+    system = escape_prompt_template(system)
+    user = escape_prompt_template(user)
     return ChatPromptTemplate.from_messages(
         [
             ("system", system),

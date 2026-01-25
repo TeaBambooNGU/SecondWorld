@@ -18,6 +18,7 @@ uv sync
 ```bash
 cp config/.env.example .env
 # 编辑 .env，设置 DEEPSEEK_API_KEY
+# 可选：填写 LANGSMITH_* 环境变量；当设置 LANGSMITH_API_KEY 且未显式设置 LANGSMITH_TRACING 时默认开启追踪
 ```
 
 3) 检查并编辑配置：
@@ -62,3 +63,4 @@ uv run python -m src.cli chapter --trace
 
 - 流式输出由 `config/project.yaml` 中的 `api.stream` 控制，也可用 `--no-stream` 关闭。
 - 章节字数由 `generation.chapter_min_chars` 与 `generation.chapter_max_chars` 控制。
+- 模型类型由 `api.provider` 控制，默认 `deepseek`，可选 `openai`（需安装 `langchain-openai` 并配置对应 `base_url`/`api_key`）。

@@ -23,6 +23,14 @@ def load_env() -> None:
         load_dotenv(root_env)
     elif config_env.exists():
         load_dotenv(config_env)
+    _enable_langsmith_tracing()
+
+
+def _enable_langsmith_tracing() -> None:
+    api_key = os.getenv("LANGSMITH_API_KEY")
+    tracing = os.getenv("LANGSMITH_TRACING")
+    if api_key and not tracing:
+        os.environ["LANGSMITH_TRACING"] = "true"
 
 
 def get_api_key(project_config: Dict[str, Any]) -> str:

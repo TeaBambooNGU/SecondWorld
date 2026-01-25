@@ -8,3 +8,5 @@
 - 更新 `docs/architecture.md` 并新增 LangChain 重构版设计文档。
 - 补充 LangChain 重构设计文档中的角色 Agent 策略、模式与并发约束。
 - 简化对话子系统为固定 reader 模式，移除对话模式参数与检测描述。
+- 架构文档新增 LangSmith 跟踪与环境变量示例。
+- 当设置 LANGSMITH_API_KEY 且未显式配置 LANGSMITH_TRACING 时默认开启追踪。

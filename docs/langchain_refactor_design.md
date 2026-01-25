@@ -155,11 +155,13 @@ StyleGuideComposer
 - 继续使用 `config/project.yaml` 的 `api`/`generation`/`paths`。
 - 依赖建议:
   - `uv add langchain`
-  - `uv add langchain-openai`
+  - `uv add langchain-deepseek`
+  - `uv add langchain-openai`（可选）
   - `uv add langgraph`（角色对话/记忆子系统）
 - 环境变量:
   - `DEEPSEEK_API_KEY`
 - 建议新增配置（不变更现有字段）:
+  - `api.provider`（默认 deepseek，可选 openai）
   - `generation.agent_concurrency`（默认 3-5）
   - `dialogue.max_concurrency`（默认 2-4，单会话串行）
   - `dialogue.memory_summary_every`（默认 10）
