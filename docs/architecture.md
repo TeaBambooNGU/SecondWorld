@@ -1,12 +1,12 @@
 # 工程架构梳理
 
-- 当前梳理时间: 2026-01-25 15:19:29
+- 当前梳理时间: 2026-02-24 10:53:57
 
 ## 项目概览
 
 - 项目定位: 本地 CLI 多 Agent 小说草稿生成流水线
 - 主要能力: 章节计划生成、角色贡献汇总、导演成稿、修订与终审、状态记录
-- 关键输出: `chapters/` 最新正文、`chapters/history/` 成稿/修订/终审归档（命名: 成稿/修订一/终审）、`data/plans/` 计划、`data/state.json` 进度与版本索引、`logs/trace_{chapter}_{YYYY-MM-DD_HH:mm:ss}.log` 追踪日志
+- 关键输出: `chapters/` 最新正文、`chapters/history/` 成稿/修订/终审归档（命名: 成稿/成稿二...、修订一/修订二...、终审/终审二...）、`data/plans/` 计划、`data/state.json` 进度与版本索引、`logs/trace_{chapter}_{YYYY-MM-DD_HH:mm:ss}.log` 追踪日志
 
 ## 工程逻辑梳理
 
@@ -20,11 +20,11 @@
 - `src/langchain_pipeline.py`: LangChain/LCEL 主流水线，组织计划生成、角色贡献、成稿、复核、修订、反AI清理、终审与状态落盘
 - `src/langchain_client.py`: LangChain ChatOpenAI 包装，连接 DeepSeek OpenAI 兼容接口并提供流式/非流式实例
 - `src/chains/*`: 分阶段 LCEL 链（计划/角色贡献/成稿/复核/修订/反AI/终审）
-- `src/prompting.py`: ChatPromptTemplate 提示词与风格提示语拼接，包含成稿字数修正提示词
+- `src/prompting.py`: ChatPromptTemplate 提示词与风格提示语拼接，包含暗线字段注入、计划/成稿“6版预演择优”约束、成稿字数修正与玄幻编辑复核提示词
 - `src/parsers.py`: JSON 提取与自修复解析
 - `src/validators.py`: 计划/复核/贡献 JSON 校验与正文长度检查
 - `src/config_loader.py`: 读取 YAML/文本配置与环境变量
-- `src/utils.py`: 通用工具、角色画像合成与日志写入
+- `src/utils.py`: 通用工具、角色画像合成、禁用词提取/命中检测与日志写入
 
 ### 依赖关系
 
@@ -36,19 +36,21 @@
 - 大纲 `config/outline.yaml` -> 计划链路 -> 计划 `data/plans/{chapter}.json`（JSON 解析与自修复）
 - 计划提示词中的 Series outline 仅使用系列/世界观概要，不包含 chapters，章节种子单独传入
 - 角色组件 `config/style_guide/components/{personality|background|identity}/*.md` + 角色配置 `config/agents.yaml`（主角/配角按角色名，龙套使用 archetype） -> 角色画像（含 traits）
-- 角色画像 + 角色提示语 -> 角色贡献链路（JSON 解析与自修复） -> 导演成稿链路 -> 编辑复核 JSON -> 修订（`max_turns`>1 且 suggestions 非空时触发） -> 反AI高频词审核清理 -> 终审 -> 状态写入 `data/state.json`
+- 角色画像 + 角色提示语 -> 角色贡献链路（`generation.agent_concurrency`>1 时并行执行；JSON 解析与自修复） -> 导演成稿链路 -> 编辑复核 JSON -> 修订（`max_turns`>1 且 suggestions 非空时触发） -> 反AI高频词审核清理 -> 终审 -> 状态写入 `data/state.json`
 - 编辑复核输出 JSON（summary/issues/suggestions/pacing_score），并作为后续修订与状态摘要来源
 - 成稿字数不达标时触发补写/压缩修正链路
+- 计划/成稿提示词均要求“内部预演 6 版，放弃前 3 版，从后 3 版择优输出”
 - 成稿提示词 = 章节计划 + 角色贡献 + 风格提示语 + 成稿示例段落（学习特点）
-- 成稿/修订/终审正文 -> 最新正文写入 `chapters/{chapter_id}_{slug}.md` -> 版本归档写入 `chapters/history/{chapter_id}_{slug}_成稿.md` / `chapters/history/{chapter_id}_{slug}_修订一.md` / `chapters/history/{chapter_id}_{slug}_终审.md` -> 版本索引写入 `data/state.json`
+- 成稿/修订/终审正文 -> 最新正文写入 `chapters/{chapter_id}_{slug}.md` -> 版本归档写入 `chapters/history/{chapter_id}_{slug}_{成稿|成稿二...|修订一|修订二...|终审|终审二...}.md` -> 版本索引写入 `data/state.json`
 - 风格提示语由 `config/style_guide/anti_ai_rules.md`、`config/style_guide/agents/{角色名}.md`（主角/配角）与 `config/style_guide/agents/{暴烈型|谨慎型|仁善型|冷静型}.md`（龙套类）、`config/style_guide/agents/director/{plan|draft|revision|final}.md` 与 `config/style_guide/components/{type}/{id}.md` 组合后注入 system 提示词
 - 编辑复核阶段由 `build_post_check_prompt` 组装复核提示词，在 `LangChainPipeline._post_check` 中通过 `build_post_check_chain` 调用，阶段标记为“修订-复核”
 - 反AI清理阶段在命中高频词后触发，`build_anti_ai_cleanup_prompt` 组装清理提示词，在 `LangChainPipeline.run_chapter` 中通过 `build_anti_ai_cleanup_chain` 调用，阶段标记为“修订-反AI”
+- 所有主生成链路（计划/角色贡献/成稿/复核/修订/终审）统一透传 `temperature`、`top_p` 与可选 `top_k`；JSON 修复链路固定 `temperature=0`、`top_p=1`、`top_k=None`
 
 ### 成稿版本留存
 
 - 最新版本: `chapters/{chapter_id}_{slug}.md`
-- 历史版本: `chapters/history/{chapter_id}_{slug}_成稿.md`、`chapters/history/{chapter_id}_{slug}_修订一.md`、`chapters/history/{chapter_id}_{slug}_终审.md`
+- 历史版本: `chapters/history/{chapter_id}_{slug}_{成稿|成稿二...}.md`、`chapters/history/{chapter_id}_{slug}_{修订一|修订二...}.md`、`chapters/history/{chapter_id}_{slug}_{终审|终审二...}.md`
 - 版本索引: `data/state.json` 记录版本路径、标签与生成时间
 
 ### 关键配置
@@ -67,12 +69,12 @@
 - `config/style_guide/draft_examples.yaml`: 成稿示例段落与学习特点列表
 - `config/style_guide/components/`: 性格/背景/身份提示语
 - `.env`: API Key（`DEEPSEEK_API_KEY`）
-- `config/project.yaml` 新增 `api.provider`、`generation.agent_concurrency` 与 `dialogue.*` 并保持向后兼容
+- `config/project.yaml` 新增 `api.provider`、`generation.agent_concurrency`、`generation.top_k` 与 `dialogue.*` 并保持向后兼容
 
 ### 运行流程
 
-- 运行步骤: plan 生成计划 -> chapter 生成成稿并可流式输出 -> 编辑复核 JSON -> 修订（满足条件时） -> 反AI高频词审核清理 -> 终审（无条件执行） -> 每次成稿/修订/终审归档版本
-- 异常/边界处理: 缺少 API Key 直接报错；章节文件已存在且未 `--force` 则中止；流式失败自动回退为非流式
+- 运行步骤: chapter 命令先读取计划（缺失则自动补跑 plan）-> 按并发配置生成角色贡献 -> 成稿并可流式输出 -> 编辑复核 JSON -> 修订（满足条件时） -> 反AI高频词审核清理 -> 终审（无条件执行） -> 每次成稿/修订/终审归档版本
+- 异常/边界处理: 缺少 API Key 直接报错；章节文件已存在且未 `--force` 则中止；流式失败自动回退为非流式；计划/贡献/复核 JSON 多轮修复后仍不合法则中止
 - 观测与日志: `--trace` 写入 `logs/trace_{chapter}_{YYYY-MM-DD_HH:mm:ss}.log`，章节状态写入 `data/state.json`，可选启用 LangSmith 跟踪
 
 ### 观测与追踪（LangSmith）
@@ -88,6 +90,12 @@ export LANGSMITH_PROJECT=your_langsmith_project
 ```
 
 ## 改动概要/变更记录
+
+### 2026-02-24 10:53:57
+
+- 本次新增/更新要点: 同步 `top_k` 参数在客户端与全链路调用；补充角色贡献并行执行机制、计划/成稿“6版预演择优”提示策略、动态历史版本命名规则
+- 变更动机/需求来源: 用户要求“根据最新代码更新 architecture.md”
+- 当前更新时间: 2026-02-24 10:53:57
 
 ### 2026-01-25 15:19:29
 

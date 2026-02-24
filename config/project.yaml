@@ -2,14 +2,36 @@ project:
   title: "SecondWorld"
   language: "zh"
 
+providers:
+  anthropic:
+    baseUrl: "https://code.ppchat.vip"
+    api: "anthropic-messages"
+    apiKeyEnv: "ANTHROPIC_API_KEY"
+    model_name: "claude-sonnet-4-6"
+    thinking:
+      type: "adaptive"
+    timeoutSec: 120
+    maxRetries: 3
+    stream: true
+    models:
+      - model_name: "claude-opus-4-6"
+        name: "Claude Opus 4.6"
+      - model_name: "claude-sonnet-4-6"
+        name: "Claude Sonnet 4.6"
+      - model_name: "claude-haiku-4-5-20251001"
+        name: "Claude Sonnet 4.5"
+  deepseek:
+    baseUrl: "https://api.deepseek.com"
+    apiKeyEnv: "DEEPSEEK_API_KEY"
+    timeoutSec: 120
+    maxRetries: 3
+    stream: true
+    models:
+      - id: "deepseek-reasoner"
+        name: "DeepSeek Reasoner"
+
 api:
-  provider: "deepseek"
-  base_url: "https://api.deepseek.com"
-  model: "deepseek-reasoner"
-  api_key_env: "DEEPSEEK_API_KEY"
-  timeout_sec: 120
-  max_retries: 3
-  stream: true
+  provider: "anthropic"
 
 generation:
   chapter_min_chars: 3000
@@ -18,7 +40,8 @@ generation:
   max_turns: 2
   agent_concurrency: 3
   temperature: 1.5
-  top_p: 0.8
+  top_p: 0.7
+  top_k: 50
 
 dialogue:
   max_concurrency: 3

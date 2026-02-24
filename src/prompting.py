@@ -29,7 +29,7 @@ def build_director_plan_prompt(
         "请用严格 JSON 输出章节计划，包含以下键：\n"
         "chapter_id, title, goal, beats (list), cast (list of agent ids), "
         "conflicts (list), pacing_notes, word_target。\n\n"
-        "请先在内部预演 3 个不同计划版本，择优输出最终版本（仅输出最终 JSON）。\n\n"
+        "请先在内部预演 6 个不同计划版本, 放弃前3个版本, 从后3个版本中择优输出最终版本（仅输出最终 JSON）。\n\n"
         f"字数目标必须在 {chapter_min_chars} 到 {chapter_max_chars} 之间，"
         f"出场角色数量需 <= {max_agents}。\n\n"
         f"系列大纲：\n{outline_summary}\n\n"
@@ -92,7 +92,7 @@ def build_director_draft_prompt(
         f"角色贡献：\n{contributions}\n\n"
         "请用 Markdown 写出完整章节，不要使用代码围栏。"
         "不要包含总结段落。"
-        "请先在内部预演 3 个不同成稿版本，择优输出最终版本（只输出最终正文）。"
+        "请先在内部预演 6 个不同成稿版本, 放弃前3个版本, 从后3个版本择优输出最终版本（只输出最终正文）。"
         f"目标字数：{chapter_min_chars}-{chapter_max_chars} 字。\n\n"
     )
     if draft_examples:
@@ -154,7 +154,7 @@ def build_post_check_prompt(
     plan: Dict[str, Any],
     draft: str,
 ) -> ChatPromptTemplate:
-    system = "你是一名编辑，审阅章节草稿的冲突、节奏与风格问题。请用严格 JSON 回复，并使用中文。"
+    system = "你是一名网络小说（玄幻类型）的编辑，审阅章节草稿的冲突、节奏与风格问题。请用严格 JSON 回复，并使用中文。"
     user = (
         "请返回严格 JSON，包含键：summary, issues (list), suggestions (list), pacing_score (1-10)。\n\n"
         f"章节计划：\n{plan}\n\n"

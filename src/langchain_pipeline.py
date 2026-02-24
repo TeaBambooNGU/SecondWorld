@@ -14,7 +14,7 @@ from .chains import (
     build_post_check_chain,
     build_revision_chain,
 )
-from .config_loader import get_api_key, load_env, load_text, load_yaml
+from .config_loader import get_api_key, load_env, load_text, load_yaml, resolve_api_config
 from .langchain_client import LangChainClient, format_messages
 from .parsers import parse_json_with_repair
 from .prompting import (
@@ -55,9 +55,10 @@ class LangChainPipeline:
         load_env()
         self.project_path = project_path
         self.project = load_yaml(project_path)
-        self.api_key = get_api_key(self.project)
+        self.api = resolve_api_config(self.project)
+        self.api_key = get_api_key(self.api)
         self.logger = logger
-        self.client = LangChainClient(self.project["api"], self.api_key)
+        self.client = LangChainClient(self.api, self.api_key)
 
     def run_plan(self, chapter_id: str | None = None) -> Dict[str, Any]:
         outline = self._load_outline()
@@ -78,7 +79,11 @@ class LangChainPipeline:
             chapter_min_chars=generation["chapter_min_chars"],
             chapter_max_chars=generation["chapter_max_chars"],
         )
-        llm = self._build_llm(temperature=generation["temperature"], top_p=generation["top_p"])
+        llm = self._build_llm(
+            temperature=generation["temperature"],
+            top_p=generation["top_p"],
+            top_k=generation.get("top_k"),
+        )
         chain = build_plan_chain(prompt, llm)
         raw = self._invoke_chain(chain, prompt, stage="计划")
         plan = self._parse_plan(raw, generation)
@@ -103,7 +108,7 @@ class LangChainPipeline:
         state = self._load_state()
         previous_summary = self._previous_summary(state)
         generation = self.project["generation"]
-        api = self.project["api"]
+        api = self.api
 
         plan = self._load_plan(chapter["id"])
         if plan:
@@ -284,13 +289,19 @@ class LangChainPipeline:
                 llm = self._build_llm(
                     temperature=generation["temperature"],
                     top_p=generation["top_p"],
+                    top_k=generation.get("top_k"),
                     streaming=True,
                 )
                 chain = chain_builder(prompt, llm)
                 return self._stream_chain_to_file(chain, prompt, output_path, stage)
             except Exception:
                 self._log_info("流式失败，回退为非流式")
-        llm = self._build_llm(temperature=generation["temperature"], top_p=generation["top_p"], streaming=False)
+        llm = self._build_llm(
+            temperature=generation["temperature"],
+            top_p=generation["top_p"],
+            top_k=generation.get("top_k"),
+            streaming=False,
+        )
         chain = chain_builder(prompt, llm)
         result = self._invoke_chain(chain, prompt, stage=stage, response_title=None)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -299,7 +310,11 @@ class LangChainPipeline:
 
     def _post_check(self, plan: Dict[str, Any], draft: str, generation: Dict[str, Any]) -> Dict[str, Any]:
         post_prompt = build_post_check_prompt(plan, draft)
-        llm = self._build_llm(temperature=generation["temperature"], top_p=generation["top_p"])
+        llm = self._build_llm(
+            temperature=generation["temperature"],
+            top_p=generation["top_p"],
+            top_k=generation.get("top_k"),
+        )
         chain = build_post_check_chain(post_prompt, llm)
         raw = self._invoke_chain(chain, post_prompt, stage="修订-复核")
         post_check = self._parse_post_check(raw)
@@ -374,7 +389,11 @@ class LangChainPipeline:
             style_guide=style_guide,
             previous_summary=previous_summary,
         )
-        llm = self._build_llm(temperature=generation["temperature"], top_p=generation["top_p"])
+        llm = self._build_llm(
+            temperature=generation["temperature"],
+            top_p=generation["top_p"],
+            top_k=generation.get("top_k"),
+        )
         chain = build_agent_contribution_chain(prompt, llm)
         self._log_info(f"Agent贡献开始 id={agent.get('id')} name={agent.get('name')}")
         raw = self._invoke_chain(chain, prompt, stage=f"Agent-{agent.get('id')}", response_title="响应")
@@ -409,7 +428,7 @@ class LangChainPipeline:
         return self._parse_json(raw, hint, validate_contribution)
 
     def _parse_json(self, raw: str, schema_hint: str, validator) -> Dict[str, Any] | None:
-        repair_llm = self._build_llm(temperature=0, top_p=1)
+        repair_llm = self._build_llm(temperature=0, top_p=1, top_k=None)
         current = raw
         for attempt in range(3):
             parsed = parse_json_with_repair(
@@ -698,10 +717,18 @@ class LangChainPipeline:
         }
         return state
 
-    def _build_llm(self, *, temperature: float, top_p: float, streaming: bool = False):
+    def _build_llm(
+        self,
+        *,
+        temperature: float,
+        top_p: float,
+        top_k: int | None,
+        streaming: bool = False,
+    ):
         return self.client.build_llm(
             temperature=temperature,
             top_p=top_p,
+            top_k=top_k,
             streaming=streaming,
         )
 
