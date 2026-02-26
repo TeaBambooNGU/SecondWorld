@@ -9,7 +9,8 @@ providers:
     apiKeyEnv: "ANTHROPIC_API_KEY"
     model_name: "claude-sonnet-4-6"
     thinking:
-      type: "adaptive"
+      type: "enabled"
+      budget_tokens: 2048
     timeoutSec: 120
     maxRetries: 3
     stream: true
@@ -40,8 +41,9 @@ generation:
   max_turns: 2
   agent_concurrency: 3
   temperature: 1.5
-  top_p: 0.7
-  top_k: 50
+  top_p: null
+  top_k: null
+  world_selector_batch_chars: 150000
 
 dialogue:
   max_concurrency: 3
@@ -55,6 +57,15 @@ paths:
   style_guide_agents_dir: "config/style_guide/agents"
   style_guide_components_dir: "config/style_guide/components"
   style_guide_draft_examples: "config/style_guide/draft_examples.yaml"
+  world_materials_dir: "/Users/teabamboo/Documents/NGU_Notes/我的小说"
+  world_materials_exclude_patterns:
+    - "CLAUDE.md"
+    - "AGENTS.md"
+    - "*第*卷*.md"
+    - "当前问题.md"
+    - "提示语修正.md"
+    - "文本分布优化器.md"
   output_dir: "chapters"
   state_path: "data/state.json"
+  plot_summary_cache_path: "data/chapter_plot_summaries.json"
   plans_dir: "data/plans"

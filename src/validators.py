@@ -75,3 +75,53 @@ def validate_draft_length(draft: str, *, min_chars: int, max_chars: int) -> List
     if length > max_chars:
         errors.append("正文长度超出上限")
     return errors
+
+
+def validate_world_material_selection(selection: Dict[str, Any]) -> List[str]:
+    return _validate_world_material_decision(selection, require_name=False)
+
+
+def validate_world_material_selection_batch(payload: Dict[str, Any]) -> List[str]:
+    errors: List[str] = []
+    decisions = payload.get("decisions")
+    if not isinstance(decisions, list):
+        errors.append("decisions 必须为 list")
+        return errors
+    if not decisions:
+        errors.append("decisions 不能为空")
+        return errors
+    for index, decision in enumerate(decisions, start=1):
+        if not isinstance(decision, dict):
+            errors.append(f"decisions[{index}] 必须为对象")
+            continue
+        item_errors = _validate_world_material_decision(decision, require_name=True)
+        for item_error in item_errors:
+            errors.append(f"decisions[{index}] {item_error}")
+    return errors
+
+
+def _validate_world_material_decision(selection: Dict[str, Any], *, require_name: bool) -> List[str]:
+    errors: List[str] = []
+    required = ["use", "mode", "selected_text", "reason"]
+    if require_name:
+        required = ["material_name"] + required
+    for key in required:
+        if key not in selection:
+            errors.append(f"缺少字段: {key}")
+    if require_name:
+        material_name = selection.get("material_name")
+        if not isinstance(material_name, str) or not material_name.strip():
+            errors.append("material_name 必须为非空字符串")
+    use = selection.get("use")
+    if not isinstance(use, bool):
+        errors.append("use 必须为 bool")
+    mode = selection.get("mode")
+    if not isinstance(mode, str) or mode not in {"full", "excerpt", "skip"}:
+        errors.append("mode 必须为 full|excerpt|skip")
+    selected_text = selection.get("selected_text")
+    if not isinstance(selected_text, str):
+        errors.append("selected_text 必须为字符串")
+    reason = selection.get("reason")
+    if not isinstance(reason, str):
+        errors.append("reason 必须为字符串")
+    return errors

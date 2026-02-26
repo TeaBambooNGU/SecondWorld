@@ -13,6 +13,7 @@ from .chains import (
     build_plan_chain,
     build_post_check_chain,
     build_revision_chain,
+    build_world_material_selector_chain,
 )
 from .config_loader import get_api_key, load_env, load_text, load_yaml, resolve_api_config
 from .langchain_client import LangChainClient, format_messages
@@ -20,12 +21,14 @@ from .parsers import parse_json_with_repair
 from .prompting import (
     build_agent_contribution_prompt,
     build_anti_ai_cleanup_prompt,
+    build_chapter_plot_summary_prompt,
     build_director_draft_prompt,
     build_director_final_prompt,
     build_director_plan_prompt,
     build_director_revision_prompt,
     build_draft_length_fix_prompt,
     build_post_check_prompt,
+    build_world_material_selector_prompt,
     compose_style_guide,
 )
 from .utils import (
@@ -43,7 +46,11 @@ from .validators import (
     validate_draft_length,
     validate_plan,
     validate_post_check,
+    validate_world_material_selection_batch,
 )
+from .world_reference_manager import WorldReferenceManager
+
+DEFAULT_WORLD_MATERIALS_DIR = "/Users/teabamboo/Documents/NGU_Notes/我的小说"
 
 
 class LangChainPipeline:
@@ -61,6 +68,10 @@ class LangChainPipeline:
         self.client = LangChainClient(self.api, self.api_key)
 
     def run_plan(self, chapter_id: str | None = None) -> Dict[str, Any]:
+        plan, _ = self._run_plan_with_world_references(chapter_id=chapter_id)
+        return plan
+
+    def _run_plan_with_world_references(self, chapter_id: str | None = None) -> tuple[Dict[str, Any], str]:
         outline = self._load_outline()
         chapter = self._select_chapter(outline, chapter_id)
         shared_style = self._load_style_guide_shared()
@@ -68,6 +79,18 @@ class LangChainPipeline:
         state = self._load_state()
         previous_summary = self._previous_summary(state)
         generation = self.project["generation"]
+        plan_seed = self._build_plan_seed(chapter)
+        world_references = self._prepare_world_references(
+            chapter=chapter,
+            plan=plan_seed,
+            generation=generation,
+        )
+        chapter_context = self._build_chapter_context(
+            outline=outline,
+            current_chapter_id=str(chapter.get("id") or ""),
+            state=state,
+            generation=generation,
+        )
 
         self._log_info(f"开始生成计划 chapter={chapter.get('id')} title={chapter.get('title')}")
         prompt = build_director_plan_prompt(
@@ -78,10 +101,12 @@ class LangChainPipeline:
             max_agents=generation["max_agents_per_chapter"],
             chapter_min_chars=generation["chapter_min_chars"],
             chapter_max_chars=generation["chapter_max_chars"],
+            world_references=world_references,
+            chapter_context=chapter_context,
         )
         llm = self._build_llm(
-            temperature=generation["temperature"],
-            top_p=generation["top_p"],
+            temperature=generation.get("temperature"),
+            top_p=generation.get("top_p"),
             top_k=generation.get("top_k"),
         )
         chain = build_plan_chain(prompt, llm)
@@ -93,7 +118,7 @@ class LangChainPipeline:
         self._save_plan(plan)
         self._log_trace("计划-解析后", json.dumps(plan, ensure_ascii=False, indent=2))
         self._log_info(f"计划生成完成 chapter={plan.get('chapter_id')} title={plan.get('title')}")
-        return plan
+        return plan, world_references
 
     def run_chapter(
         self,
@@ -110,12 +135,10 @@ class LangChainPipeline:
         generation = self.project["generation"]
         api = self.api
 
-        plan = self._load_plan(chapter["id"])
-        if plan:
-            self._log_info(f"使用已有计划 chapter={chapter.get('id')} title={chapter.get('title')}")
-        else:
-            self._log_info(f"未找到计划，开始生成 chapter={chapter.get('id')} title={chapter.get('title')}")
-            plan = self.run_plan(chapter["id"])
+        plan, world_references = self._resolve_plan_and_world_references(
+            chapter=chapter,
+            generation=generation,
+        )
 
         contributions = self._collect_contributions(
             plan=plan,
@@ -133,6 +156,7 @@ class LangChainPipeline:
             chapter_min_chars=generation["chapter_min_chars"],
             chapter_max_chars=generation["chapter_max_chars"],
             draft_examples=draft_examples,
+            world_references=world_references,
         )
         output_path = self._chapter_output_path(plan)
         if output_path.exists() and not force:
@@ -148,7 +172,7 @@ class LangChainPipeline:
             stream=stream,
         )
 
-        post_check = self._post_check(plan, draft, generation)
+        post_check = self._post_check(plan, draft, generation, world_references=world_references)
 
         if generation.get("max_turns", 1) > 1 and post_check.get("suggestions"):
             style_guide = self._compose_style_guide("director", shared_style, stage="revision")
@@ -214,9 +238,36 @@ class LangChainPipeline:
         versions.append(self._archive_draft(output_path, draft, stage="final"))
         self._log_info(f"终审完成 字数={len(draft)} 输出={output_path}")
 
-        state = self._update_state(state, plan, output_path, post_check, versions)
+        plot_summary = self._ensure_plot_summary_cached(
+            chapter_id=str(plan.get("chapter_id") or chapter.get("id") or "0000"),
+            chapter_title=str(plan.get("title") or chapter.get("title") or "chapter"),
+            chapter_text=draft,
+            generation=generation,
+        )
+
+        state = self._update_state(state, plan, output_path, post_check, versions, plot_summary)
         self._save_state(state)
         return {"plan": plan, "draft_path": str(output_path), "post_check": post_check}
+
+    def _resolve_plan_and_world_references(
+        self,
+        *,
+        chapter: Dict[str, Any],
+        generation: Dict[str, Any],
+    ) -> tuple[Dict[str, Any], str]:
+        plan = self._load_plan(chapter["id"])
+        if plan:
+            self._log_info(f"使用已有计划 chapter={chapter.get('id')} title={chapter.get('title')}")
+            world_references = self._prepare_world_references(
+                chapter=chapter,
+                plan=plan,
+                generation=generation,
+            )
+            return plan, world_references
+
+        self._log_info(f"未找到计划，开始生成 chapter={chapter.get('id')} title={chapter.get('title')}")
+        plan, world_references = self._run_plan_with_world_references(chapter_id=chapter["id"])
+        return plan, world_references
 
     def _generate_draft_versions(
         self,
@@ -287,8 +338,8 @@ class LangChainPipeline:
         if stream:
             try:
                 llm = self._build_llm(
-                    temperature=generation["temperature"],
-                    top_p=generation["top_p"],
+                    temperature=generation.get("temperature"),
+                    top_p=generation.get("top_p"),
                     top_k=generation.get("top_k"),
                     streaming=True,
                 )
@@ -297,8 +348,8 @@ class LangChainPipeline:
             except Exception:
                 self._log_info("流式失败，回退为非流式")
         llm = self._build_llm(
-            temperature=generation["temperature"],
-            top_p=generation["top_p"],
+            temperature=generation.get("temperature"),
+            top_p=generation.get("top_p"),
             top_k=generation.get("top_k"),
             streaming=False,
         )
@@ -308,11 +359,17 @@ class LangChainPipeline:
         output_path.write_text(result, encoding="utf-8")
         return result
 
-    def _post_check(self, plan: Dict[str, Any], draft: str, generation: Dict[str, Any]) -> Dict[str, Any]:
-        post_prompt = build_post_check_prompt(plan, draft)
+    def _post_check(
+        self,
+        plan: Dict[str, Any],
+        draft: str,
+        generation: Dict[str, Any],
+        world_references: str | None = None,
+    ) -> Dict[str, Any]:
+        post_prompt = build_post_check_prompt(plan, draft, world_references=world_references)
         llm = self._build_llm(
-            temperature=generation["temperature"],
-            top_p=generation["top_p"],
+            temperature=generation.get("temperature"),
+            top_p=generation.get("top_p"),
             top_k=generation.get("top_k"),
         )
         chain = build_post_check_chain(post_prompt, llm)
@@ -322,6 +379,20 @@ class LangChainPipeline:
             post_check = {}
         self._log_trace("修订-复核-解析后", json.dumps(post_check, ensure_ascii=False, indent=2))
         return post_check
+
+    def _build_plan_seed(self, chapter: Dict[str, Any]) -> Dict[str, Any]:
+        raw_cast = chapter.get("cast_hint")
+        raw_beats = chapter.get("beats")
+        raw_conflicts = chapter.get("conflicts")
+        return {
+            "chapter_id": str(chapter.get("id") or ""),
+            "title": chapter.get("title"),
+            "goal": chapter.get("summary") or chapter.get("goal"),
+            "beats": raw_beats if isinstance(raw_beats, list) else [],
+            "cast": raw_cast if isinstance(raw_cast, list) else [],
+            "conflicts": raw_conflicts if isinstance(raw_conflicts, list) else [],
+            "pacing_notes": chapter.get("pacing_notes") or chapter.get("rhythm"),
+        }
 
     def _collect_contributions(
         self,
@@ -390,8 +461,8 @@ class LangChainPipeline:
             previous_summary=previous_summary,
         )
         llm = self._build_llm(
-            temperature=generation["temperature"],
-            top_p=generation["top_p"],
+            temperature=generation.get("temperature"),
+            top_p=generation.get("top_p"),
             top_k=generation.get("top_k"),
         )
         chain = build_agent_contribution_chain(prompt, llm)
@@ -400,10 +471,34 @@ class LangChainPipeline:
         contribution = self._parse_contribution(raw)
         if not contribution:
             raise RuntimeError(f"Agent贡献解析失败: {agent.get('id')}")
+        contribution = self._sanitize_contribution(contribution)
         self._log_info(
             f"Agent贡献完成 id={agent.get('id')} 字数={len(raw.strip())}"
         )
         return contribution
+
+    def _sanitize_contribution(self, contribution: Dict[str, Any]) -> Dict[str, Any]:
+        highlights = contribution.get("highlights")
+        if not isinstance(highlights, list):
+            return contribution
+        sanitized_highlights = []
+        removed_sensory_anchor = 0
+        for highlight in highlights:
+            if not isinstance(highlight, dict):
+                sanitized_highlights.append(highlight)
+                continue
+            cleaned_highlight = {}
+            for key, value in highlight.items():
+                if key == "sensory_anchor":
+                    removed_sensory_anchor += 1
+                    continue
+                cleaned_highlight[key] = value
+            sanitized_highlights.append(cleaned_highlight)
+        if removed_sensory_anchor:
+            self._log_info(f"Agent贡献清洗: 移除 sensory_anchor 字段 {removed_sensory_anchor} 条")
+        sanitized = dict(contribution)
+        sanitized["highlights"] = sanitized_highlights
+        return sanitized
 
     def _parse_plan(self, raw: str, generation: Dict[str, Any]) -> Dict[str, Any] | None:
         hint = (
@@ -427,6 +522,13 @@ class LangChainPipeline:
         hint = "字段: agent_id, name, highlights(list, 6-10 条)。"
         return self._parse_json(raw, hint, validate_contribution)
 
+    def _parse_world_material_selection_batch(self, raw: str) -> Dict[str, Any] | None:
+        hint = (
+            "字段: decisions(list)。"
+            "decisions 每项字段: material_name(string), use(bool), mode(full|excerpt|skip), selected_text(string), reason(string)。"
+        )
+        return self._parse_json(raw, hint, validate_world_material_selection_batch)
+
     def _parse_json(self, raw: str, schema_hint: str, validator) -> Dict[str, Any] | None:
         repair_llm = self._build_llm(temperature=0, top_p=1, top_k=None)
         current = raw
@@ -446,6 +548,132 @@ class LangChainPipeline:
             schema_hint = f"{schema_hint}\n校验错误: {'; '.join(errors)}"
             current = json.dumps(parsed, ensure_ascii=False)
         return None
+
+    def _prepare_world_references(
+        self,
+        *,
+        chapter: Dict[str, Any],
+        plan: Dict[str, Any],
+        generation: Dict[str, Any],
+    ) -> str:
+        paths = self.project.get("paths", {})
+        materials_dir = paths.get("world_materials_dir") or DEFAULT_WORLD_MATERIALS_DIR
+        raw_exclude_patterns = paths.get("world_materials_exclude_patterns") or []
+        exclude_patterns = raw_exclude_patterns if isinstance(raw_exclude_patterns, list) else []
+        chapter_id = str(plan.get("chapter_id") or chapter.get("id") or "unknown")
+        budget_chars = max(int(generation.get("chapter_max_chars", 3000)) * 4, 8000)
+        selector_batch_chars = max(int(generation.get("world_selector_batch_chars", 150000)), 2000)
+        manager = WorldReferenceManager(
+            materials_dir=materials_dir,
+            cache_root="data/world_refs",
+            exclude_patterns=exclude_patterns,
+            logger=self.logger,
+        )
+
+        def selector(payload: Dict[str, Any]) -> Dict[str, Any]:
+            prompt = build_world_material_selector_prompt(
+                chapter=payload["chapter"],
+                plan=payload["plan"],
+                materials=payload["materials"],
+                remaining_budget_chars=int(payload.get("remaining_budget_chars", budget_chars)),
+                batch_index=int(payload.get("batch_index", 1)),
+                batch_total=int(payload.get("batch_total", 1)),
+            )
+            llm = self._build_llm(
+                temperature=0.3,
+                top_p=0.9,
+                top_k=generation.get("top_k"),
+            )
+            chain = build_world_material_selector_chain(prompt, llm)
+            stage = f"素材筛选-批次{payload.get('batch_index', 1)}"
+            raw = self._invoke_chain(chain, prompt, stage=stage, response_title="响应")
+            parsed = self._parse_world_material_selection_batch(raw)
+            if parsed is None:
+                self._log_info(f"素材筛选解析失败，跳过批次: {payload.get('batch_index', 1)}")
+                return {"decisions": []}
+            return parsed
+
+        pack = manager.build_reference_pack(
+            chapter_id=chapter_id,
+            chapter=chapter,
+            plan=plan,
+            selector=selector,
+            budget_chars=budget_chars,
+            selector_batch_chars=selector_batch_chars,
+        )
+        entries = pack.get("entries", [])
+        if entries:
+            self._log_info(
+                f"世界观素材筛选完成 chapter={chapter_id} selected={len(entries)} manifest={pack.get('manifest_path')}"
+            )
+        else:
+            self._log_info(f"世界观素材筛选完成 chapter={chapter_id} selected=0")
+        return str(pack.get("prompt_context") or "")
+
+    def _build_chapter_context(
+        self,
+        *,
+        outline: Dict[str, Any],
+        current_chapter_id: str,
+        state: Dict[str, Any],
+        generation: Dict[str, Any],
+    ) -> str:
+        chapters = outline.get("chapters", [])
+        if not chapters or not current_chapter_id:
+            return ""
+        ordered_previous_ids: list[str] = []
+        for chapter in chapters:
+            chapter_id = str(chapter.get("id") or "")
+            if not chapter_id:
+                continue
+            if chapter_id == current_chapter_id:
+                break
+            ordered_previous_ids.append(chapter_id)
+        generated_chapters: list[tuple[str, str, Path]] = []
+        state_chapters = state.get("chapters", {})
+        for chapter_id in ordered_previous_ids:
+            chapter_state = state_chapters.get(chapter_id)
+            if not isinstance(chapter_state, dict):
+                continue
+            file_value = chapter_state.get("file")
+            if not file_value:
+                continue
+            chapter_path = Path(str(file_value))
+            if not chapter_path.exists():
+                continue
+            chapter_title = str(chapter_state.get("title") or chapter_id)
+            generated_chapters.append((chapter_id, chapter_title, chapter_path))
+        if not generated_chapters:
+            return ""
+
+        lines: list[str] = ["读取策略：前3章使用全文，其余章节使用剧情摘要。"]
+        full_count = 3
+        for index, (chapter_id, chapter_title, chapter_path) in enumerate(generated_chapters, start=1):
+            plot_summary = self._get_or_create_plot_summary(
+                chapter_id=chapter_id,
+                chapter_title=chapter_title,
+                chapter_path=chapter_path,
+                generation=generation,
+            )
+            if index <= full_count:
+                chapter_text = chapter_path.read_text(encoding="utf-8").strip()
+                if not chapter_text:
+                    continue
+                lines.append(f"【第{chapter_id}章·{chapter_title}·全文】")
+                lines.append(chapter_text)
+                lines.append("")
+                continue
+            if not plot_summary:
+                continue
+            lines.append(f"【第{chapter_id}章·{chapter_title}·剧情摘要】")
+            lines.append(plot_summary)
+            lines.append("")
+        context = "\n".join(lines).strip()
+        if context:
+            self._log_info(
+                f"章节连续性上下文构建完成 current={current_chapter_id} generated={len(generated_chapters)}"
+            )
+        return context
 
     def _invoke_chain(self, chain, prompt, *, stage: str, response_title: str | None = "响应(原文)") -> str:
         messages = prompt.format_messages()
@@ -700,6 +928,7 @@ class LangChainPipeline:
         output_path: Path,
         post_check: Dict[str, Any],
         versions: list[Dict[str, Any]] | None,
+        plot_summary: str | None,
     ) -> Dict[str, Any]:
         chapters = state.setdefault("chapters", {})
         chapter_id = plan.get("chapter_id", "0000")
@@ -709,6 +938,7 @@ class LangChainPipeline:
             "title": plan.get("title"),
             "file": str(output_path),
             "summary": post_check.get("summary"),
+            "plot_summary": plot_summary or post_check.get("summary"),
             "issues": post_check.get("issues", []),
             "suggestions": post_check.get("suggestions", []),
             "pacing_score": post_check.get("pacing_score"),
@@ -717,11 +947,127 @@ class LangChainPipeline:
         }
         return state
 
+    def _plot_summary_cache_path(self) -> Path:
+        paths = self.project.get("paths", {})
+        cache_path = paths.get("plot_summary_cache_path") or "data/chapter_plot_summaries.json"
+        return Path(str(cache_path))
+
+    def _load_plot_summary_cache(self) -> Dict[str, Any]:
+        data = load_json(self._plot_summary_cache_path(), {})
+        if isinstance(data, dict):
+            return data
+        return {}
+
+    def _save_plot_summary_cache(self, cache: Dict[str, Any]) -> None:
+        save_json(self._plot_summary_cache_path(), cache)
+
+    def _ensure_plot_summary_cached(
+        self,
+        *,
+        chapter_id: str,
+        chapter_title: str,
+        chapter_text: str,
+        generation: Dict[str, Any],
+    ) -> str | None:
+        chapter_id = str(chapter_id)
+        cache = self._load_plot_summary_cache()
+        cached = self._extract_cached_summary(cache, chapter_id)
+        if cached:
+            return cached
+        generated = self._summarize_plot_for_chapter(
+            chapter_id=chapter_id,
+            chapter_title=chapter_title,
+            chapter_text=chapter_text,
+            generation=generation,
+        )
+        if not generated:
+            return None
+        cache[chapter_id] = {
+            "summary": generated,
+            "source": "llm_generated",
+            "updated_at": now_iso(),
+        }
+        self._save_plot_summary_cache(cache)
+        self._log_info(f"剧情摘要已写入缓存 chapter={chapter_id}")
+        return generated
+
+    def _get_or_create_plot_summary(
+        self,
+        *,
+        chapter_id: str,
+        chapter_title: str,
+        chapter_path: Path,
+        generation: Dict[str, Any],
+    ) -> str | None:
+        chapter_id = str(chapter_id)
+        cache = self._load_plot_summary_cache()
+        cached = self._extract_cached_summary(cache, chapter_id)
+        if cached:
+            return cached
+
+        chapter_text = chapter_path.read_text(encoding="utf-8").strip()
+        if not chapter_text:
+            return None
+        generated = self._summarize_plot_for_chapter(
+            chapter_id=chapter_id,
+            chapter_title=chapter_title,
+            chapter_text=chapter_text,
+            generation=generation,
+        )
+        if not generated:
+            return None
+        cache[chapter_id] = {
+            "summary": generated,
+            "source": "llm_generated",
+            "updated_at": now_iso(),
+        }
+        self._save_plot_summary_cache(cache)
+        self._log_info(f"剧情摘要已写入缓存 chapter={chapter_id}")
+        return generated
+
+    def _extract_cached_summary(self, cache: Dict[str, Any], chapter_id: str) -> str | None:
+        entry = cache.get(chapter_id)
+        if isinstance(entry, str) and entry.strip():
+            return entry.strip()
+        if isinstance(entry, dict):
+            summary = entry.get("summary")
+            if isinstance(summary, str) and summary.strip():
+                return summary.strip()
+        return None
+
+    def _summarize_plot_for_chapter(
+        self,
+        *,
+        chapter_id: str,
+        chapter_title: str,
+        chapter_text: str,
+        generation: Dict[str, Any],
+    ) -> str | None:
+        prompt = build_chapter_plot_summary_prompt(
+            chapter_id=chapter_id,
+            chapter_title=chapter_title,
+            chapter_text=chapter_text,
+        )
+        llm = self._build_llm(
+            temperature=0.3,
+            top_p=0.9,
+            top_k=generation.get("top_k"),
+            streaming=False,
+        )
+        chain = build_draft_chain(prompt, llm)
+        raw = self._invoke_chain(chain, prompt, stage=f"剧情摘要-{chapter_id}", response_title="响应")
+        summary = raw.strip()
+        if not summary:
+            return None
+        if summary.startswith("```") and summary.endswith("```"):
+            summary = summary.strip("`").strip()
+        return summary
+
     def _build_llm(
         self,
         *,
-        temperature: float,
-        top_p: float,
+        temperature: float | None,
+        top_p: float | None,
         top_k: int | None,
         streaming: bool = False,
     ):

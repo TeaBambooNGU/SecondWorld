@@ -121,3 +121,34 @@ def test_build_llm_with_class_supports_anthropic_model_name_and_thinking():
     assert llm.top_p == 0.9
     assert llm.thinking == {"type": "adaptive"}
     assert llm.streaming is True
+
+
+def test_build_llm_with_class_omits_sampling_params_when_none():
+    class DummyModel:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    client = LangChainClient(
+        {
+            "provider": "openai",
+            "base_url": "https://example.com",
+            "model": "gpt-test",
+        },
+        api_key="secret",
+    )
+
+    llm = client._build_llm_with_class(
+        DummyModel,
+        temperature=None,
+        top_p=None,
+        top_k=None,
+        streaming=False,
+        callbacks=None,
+    )
+
+    assert llm.kwargs["model"] == "gpt-test"
+    assert llm.kwargs["api_key"] == "secret"
+    assert llm.kwargs["base_url"] == "https://example.com"
+    assert "temperature" not in llm.kwargs
+    assert "top_p" not in llm.kwargs
+    assert "top_k" not in llm.kwargs

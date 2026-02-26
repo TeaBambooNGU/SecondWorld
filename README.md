@@ -28,6 +28,8 @@ cp config/.env.example .env
 - `config/outline.yaml`
 - `config/style_guide/`（共享规则在 `anti_ai_rules.md`，各角色提示语在 `agents/`）
 - `config/style_guide/components/`（性格/背景/身份提示语）
+- `paths.world_materials_dir`（外部小说素材目录，默认 `/Users/teabamboo/Documents/NGU_Notes/我的小说`）
+- `paths.world_materials_exclude_patterns`（素材过滤规则，支持通配符）
 
 4) 生成章节草稿：
 
@@ -38,6 +40,7 @@ uv run python -m src.cli chapter --chapter 0001
 输出：
 - `chapters/`：Markdown 草稿
 - `data/state.json`：进度与摘要
+- `data/world_refs/{chapter_id}/`：世界观素材筛选缓存（含 `manifest.json`）
 
 ## 命令
 
@@ -67,6 +70,8 @@ uv run python -m src.cli chapter --trace
 - `anthropic` 支持中转站 endpoint（例如 `https://code.ppchat.vip`），并通过环境变量读取密钥（例如 `ANTHROPIC_API_KEY`）。
 - `anthropic` 默认开启 `thinking`（`providers.anthropic.thinking.type=adaptive`），可在配置中调整或关闭。
 - 当使用 `anthropic` 时，请先安装依赖：`uv add langchain-anthropic`。
+- Chapter 流程会先运行“世界观素材筛选 Agent”：从 `paths.world_materials_dir` 批量读取素材并决定迁移全篇或节选到工程缓存（超出输入预算自动分批），再由写作 Agent 仅使用缓存内容进行成稿/修订/终审。
+- 世界观素材读取仅扫描 `world_materials_dir` 当前目录，不递归子目录；可通过 `world_materials_exclude_patterns` 过滤指定文件。
 
 ## 切换 Provider（简版）
 
