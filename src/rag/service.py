@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict
 
@@ -12,6 +13,10 @@ from .retriever import NovelRAGRetriever
 def resolve_rag_config(project_config: Dict[str, Any]) -> Dict[str, Any]:
     rag = project_config.get("rag") or {}
     paths = project_config.get("paths") or {}
+    retriever_top_k = max(int(rag.get("retriever_top_k", 6)), 1)
+    mmr_lambda = float(rag.get("mmr_lambda", 0.65))
+    mmr_prefetch_factor = float(rag.get("mmr_prefetch_factor", 4.0))
+    fusion_num_queries = max(int(rag.get("fusion_num_queries", 1)), 1)
 
     return {
         "enabled": bool(rag.get("enabled", False)),
@@ -20,12 +25,38 @@ def resolve_rag_config(project_config: Dict[str, Any]) -> Dict[str, Any]:
         "chunk_size_chars": max(int(rag.get("chunk_size_chars", 420)), 80),
         "chunk_overlap_chars": max(int(rag.get("chunk_overlap_chars", 80)), 0),
         "min_chunk_chars": max(int(rag.get("min_chunk_chars", 80)), 1),
-        "retriever_top_k": max(int(rag.get("retriever_top_k", 6)), 1),
+        "retriever_top_k": retriever_top_k,
+        "retrieval_modes": _resolve_retrieval_modes(rag.get("retrieval_modes")),
+        "fusion_num_queries": fusion_num_queries,
+        "fusion_use_async": bool(rag.get("fusion_use_async", False)),
+        "mmr_lambda": min(max(mmr_lambda, 0.0), 1.0),
+        "mmr_prefetch_factor": max(mmr_prefetch_factor, 1.0),
         "max_reference_chars": max(int(rag.get("max_reference_chars", 1600)), 0),
         "vector_db_dir": str(paths.get("rag_vector_db_dir") or "data/rag/chroma"),
         "source_dir": str(paths.get("rag_source_dir") or "data/rag/source_txt"),
         "collection": str(paths.get("rag_collection") or "novel_style_cases"),
     }
+
+
+def _resolve_retrieval_modes(raw_modes: Any) -> list[str]:
+    if isinstance(raw_modes, str):
+        modes = [part.strip() for part in raw_modes.split(",")]
+    elif isinstance(raw_modes, list):
+        modes = [str(item).strip() for item in raw_modes]
+    else:
+        modes = []
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for mode in modes:
+        lowered = mode.lower()
+        if lowered in {"similarity", "dense", "vector"}:
+            lowered = "default"
+        if lowered in {"default", "mmr"} and lowered not in seen:
+            normalized.append(lowered)
+            seen.add(lowered)
+    if not normalized:
+        return ["default", "mmr"]
+    return normalized
 
 
 def build_rag_query(plan: Dict[str, Any], contributions: Dict[str, Any]) -> str:
@@ -50,17 +81,50 @@ def build_rag_query(plan: Dict[str, Any], contributions: Dict[str, Any]) -> str:
         if len(highlight_samples) >= 8:
             break
 
+    compact_beats = [_compact_plan_item(item, max_chars=48) for item in beats]
+    compact_conflicts = [_compact_plan_item(item, max_chars=42) for item in conflicts]
+    compact_beats = [item for item in compact_beats if item][:4]
+    compact_conflicts = [item for item in compact_conflicts if item][:4]
+
     lines = [
-        f"章节标题: {plan.get('title')}",
-        f"章节目标: {plan.get('goal')}",
-        f"节拍要点: {'；'.join(str(item) for item in beats[:6])}",
-        f"核心冲突: {'；'.join(str(item) for item in conflicts[:6])}",
+        f"章节标题: {_compact_text(plan.get('title'), max_chars=32)}",
+        f"章节目标: {_compact_text(plan.get('goal'), max_chars=120)}",
     ]
+    if compact_beats:
+        lines.append(f"关键节拍: {'；'.join(compact_beats)}")
+    if compact_conflicts:
+        lines.append(f"核心冲突: {'；'.join(compact_conflicts)}")
     if highlight_samples:
-        lines.append("角色片段样本:")
-        lines.extend(f"- {item}" for item in highlight_samples)
-    lines.append("请检索更口语化、更有人味的玄幻网文写法样例，优先动作+对话表达。")
+        lines.append("角色语言样本:")
+        lines.extend(f"- {_compact_text(item, max_chars=56)}" for item in highlight_samples[:4])
+    lines.append("检索目标: 口语化、动作+对话、情绪张力、短句节奏。")
     return "\n".join(lines)
+
+
+def _compact_text(value: Any, *, max_chars: int) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= 1:
+        return text[:max_chars]
+    return f"{text[: max_chars - 1].rstrip()}…"
+
+
+def _compact_plan_item(item: Any, *, max_chars: int) -> str:
+    if isinstance(item, str):
+        return _compact_text(item, max_chars=max_chars)
+    if not isinstance(item, dict):
+        return _compact_text(item, max_chars=max_chars)
+    sequence = _compact_text(item.get("sequence"), max_chars=12)
+    content = _compact_text(item.get("content"), max_chars=max_chars)
+    if sequence and content:
+        return f"{sequence}:{content}"
+    if content:
+        return content
+    summary = _compact_text(item.get("summary"), max_chars=max_chars)
+    if summary:
+        return summary
+    return ""
 
 
 def format_rag_references(results: list[Dict[str, Any]]) -> str:
@@ -128,5 +192,10 @@ def retrieve_rag_examples(
     return retriever.retrieve(
         query=query,
         top_k=rag_config["retriever_top_k"],
+        retrieval_modes=rag_config["retrieval_modes"],
+        fusion_num_queries=rag_config["fusion_num_queries"],
+        fusion_use_async=rag_config["fusion_use_async"],
+        mmr_lambda=rag_config["mmr_lambda"],
+        mmr_prefetch_factor=rag_config["mmr_prefetch_factor"],
         max_reference_chars=rag_config["max_reference_chars"],
     )

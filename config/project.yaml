@@ -71,6 +71,13 @@ rag:
   chunk_overlap_chars: 80
   min_chunk_chars: 80
   retriever_top_k: 6
+  retrieval_modes:
+    - "default"
+    - "mmr"
+  fusion_num_queries: 3
+  fusion_use_async: false
+  mmr_lambda: 0.65
+  mmr_prefetch_factor: 4.0
   max_reference_chars: 1600
 
 paths:

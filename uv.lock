@@ -1486,6 +1486,19 @@ wheels = [
 ]
 
 [[package]]
+name = "llama-index-vector-stores-milvus"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "llama-index-core" },
+    { name = "pymilvus", extra = ["milvus-lite"] },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9f/ef/381a3a68d73a8df0e3d0c3714196e295e5b85d334522f45895fdda13e769/llama_index_vector_stores_milvus-1.0.0.tar.gz", hash = "sha256:bb722a9f01757dee2091d6ec3bd9fdfb0369fe731d5274e0b95797a9a5329943", size = 15841, upload-time = "2026-02-13T12:26:38.911Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3d/a6/6051c38154e0a813110b8f2a0189801989a7f3e352f05c2638d6819b25a8/llama_index_vector_stores_milvus-1.0.0-py3-none-any.whl", hash = "sha256:63060fb418eb549e9a71ddab2e97e2df38614b9cdcba3a1bf7af991311463a0f", size = 16060, upload-time = "2026-02-13T12:26:38.077Z" },
+]
+
+[[package]]
 name = "llama-index-workflows"
 version = "2.15.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1605,6 +1618,20 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d6/54/cfe61301667036ec958cb99bd3efefba235e65cdeb9c84d24a8293ba1d90/mdurl-0.1.2.tar.gz", hash = "sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba", size = 8729, upload-time = "2022-08-14T12:40:10.846Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8", size = 9979, upload-time = "2022-08-14T12:40:09.779Z" },
+]
+
+[[package]]
+name = "milvus-lite"
+version = "2.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tqdm" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/b2/acc5024c8e8b6a0b034670b8e8af306ebd633ede777dcbf557eac4785937/milvus_lite-2.5.1-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:6b014453200ba977be37ba660cb2d021030375fa6a35bc53c2e1d92980a0c512", size = 27934713, upload-time = "2025-06-30T04:23:37.028Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/2e/746f5bb1d6facd1e73eb4af6dd5efda11125b0f29d7908a097485ca6cad9/milvus_lite-2.5.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:a2e031088bf308afe5f8567850412d618cfb05a65238ed1a6117f60decccc95a", size = 24421451, upload-time = "2025-06-30T04:23:51.747Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/cf/3d1fee5c16c7661cf53977067a34820f7269ed8ba99fe9cf35efc1700866/milvus_lite-2.5.1-py3-none-manylinux2014_aarch64.whl", hash = "sha256:a13277e9bacc6933dea172e42231f7e6135bd3bdb073dd2688ee180418abd8d9", size = 45337093, upload-time = "2025-06-30T04:24:06.706Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/82/41d9b80f09b82e066894d9b508af07b7b0fa325ce0322980674de49106a0/milvus_lite-2.5.1-py3-none-manylinux2014_x86_64.whl", hash = "sha256:25ce13f4b8d46876dd2b7ac8563d7d8306da7ff3999bb0d14b116b30f71d706c", size = 55263911, upload-time = "2025-06-30T04:24:19.434Z" },
 ]
 
 [[package]]
@@ -2637,6 +2664,29 @@ wheels = [
 ]
 
 [[package]]
+name = "pymilvus"
+version = "2.6.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cachetools" },
+    { name = "grpcio" },
+    { name = "orjson" },
+    { name = "pandas" },
+    { name = "protobuf" },
+    { name = "python-dotenv" },
+    { name = "setuptools" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/94/0c/92adff800a04cd3e9b3f17c06fa972c8d590846b1e0bac0ccf39e054b596/pymilvus-2.6.9.tar.gz", hash = "sha256:c53a3d84ff15814e251be13edda70a98a1c8a6090d7597a908387cbb94a9504a", size = 1493560, upload-time = "2026-02-10T11:01:27.415Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6a/56/ab7f0a5aba6fc06dc210a059d6f6d2ee1f3371d40e2b4366a409576554b8/pymilvus-2.6.9-py3-none-any.whl", hash = "sha256:3e14e8072f6429dcd79d52a24dc021c594cb80841ddd76cb974bc539d1f4cdda", size = 301225, upload-time = "2026-02-10T11:01:25.796Z" },
+]
+
+[package.optional-dependencies]
+milvus-lite = [
+    { name = "milvus-lite", marker = "sys_platform != 'win32'" },
+]
+
+[[package]]
 name = "pypdf"
 version = "6.7.4"
 source = { registry = "https://pypi.org/simple" }
@@ -3005,6 +3055,8 @@ dependencies = [
     { name = "langgraph" },
     { name = "llama-index" },
     { name = "llama-index-vector-stores-chroma" },
+    { name = "llama-index-vector-stores-milvus" },
+    { name = "pymilvus" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "zhipuai" },
@@ -3026,6 +3078,8 @@ requires-dist = [
     { name = "langgraph" },
     { name = "llama-index", specifier = ">=0.14.15" },
     { name = "llama-index-vector-stores-chroma", specifier = ">=0.5.5" },
+    { name = "llama-index-vector-stores-milvus", specifier = ">=1.0.0" },
+    { name = "pymilvus", specifier = ">=2.6.9" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "zhipuai", specifier = ">=2.1.5.20250825" },

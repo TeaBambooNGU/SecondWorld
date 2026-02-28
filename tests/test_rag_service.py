@@ -17,14 +17,51 @@ def test_resolve_rag_config_defaults():
     assert config["enabled"] is False
     assert config["embedding_model"] == "embedding-3"
     assert config["embedding_batch_size"] == 64
+    assert config["retriever_top_k"] == 6
+    assert config["retrieval_modes"] == ["default", "mmr"]
+    assert config["fusion_num_queries"] == 1
+    assert config["fusion_use_async"] is False
+    assert config["mmr_lambda"] == 0.65
+    assert config["mmr_prefetch_factor"] == 4.0
     assert config["source_dir"] == "data/rag/source_txt"
+
+
+def test_resolve_rag_config_fusion_num_queries_min_one():
+    config = resolve_rag_config(
+        {
+            "rag": {
+                "fusion_num_queries": 0,
+            },
+            "paths": {},
+        }
+    )
+    assert config["fusion_num_queries"] == 1
+
+
+def test_resolve_rag_config_modes_fallback_to_default_and_mmr():
+    config = resolve_rag_config(
+        {
+            "rag": {
+                "retrieval_modes": ["unknown", "dense", "mmr", "mmr"],
+            },
+            "paths": {},
+        }
+    )
+    assert config["retrieval_modes"] == ["default", "mmr"]
 
 
 def test_build_rag_query_contains_plan_and_highlights():
     plan = {
         "title": "皇城夜雨",
         "goal": "主角试探使臣",
-        "beats": ["对峙", "试探"],
+        "beats": [
+            {
+                "sequence": "开场场面",
+                "content": "于皓在雨夜里被带去看账，情绪紧绷。",
+                "detail_anchors": ["青砖", "雨声"],
+            },
+            "试探",
+        ],
         "conflicts": ["话术博弈"],
     }
     contributions = {
@@ -39,7 +76,8 @@ def test_build_rag_query_contains_plan_and_highlights():
     assert "皇城夜雨" in query
     assert "主角试探使臣" in query
     assert "翻了个白眼，嘟囔道" in query
-    assert "动作+对话表达" in query
+    assert "动作+对话" in query
+    assert "detail_anchors" not in query
 
 
 def test_format_rag_references():
