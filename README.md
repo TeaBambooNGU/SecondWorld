@@ -31,7 +31,7 @@ cp config/.env.example .env
 - `config/style_guide/components/`（性格/背景/身份提示语）
 - `paths.world_materials_dir`（外部小说素材目录，默认 `/Users/teabamboo/Documents/NGU_Notes/我的小说`）
 - `paths.world_materials_exclude_patterns`（素材过滤规则，支持通配符）
-- `rag.*` 与 `paths.rag_*`（LlamaIndex RAG 检索配置与向量库路径）
+- `rag.*` 与 `paths.rag_*`（LlamaIndex RAG 检索配置与向量库路径，可在 `chroma/milvus` 间切换）
 
 4) 生成章节草稿：
 
@@ -81,8 +81,13 @@ uv run python -m src.cli rag-index --rebuild
 - 当使用 `anthropic` 时，请先安装依赖：`uv add langchain-anthropic`。
 - Chapter 流程会先运行“世界观素材筛选 Agent”：从 `paths.world_materials_dir` 批量读取素材并决定迁移全篇或节选到工程缓存（超出输入预算自动分批），再由写作 Agent 仅使用缓存内容进行成稿/修订/终审。
 - 世界观素材读取仅扫描 `world_materials_dir` 当前目录，不递归子目录；可通过 `world_materials_exclude_patterns` 过滤指定文件。
-- RAG 成稿增强：在成稿阶段根据章节计划/角色贡献构造检索 query，从小说知识库（`paths.rag_vector_db_dir`）召回行文片段，注入提示词用于“学表达、学节奏”，禁止照抄句子或复用原情节。
+- RAG 成稿增强：在成稿阶段根据章节计划/角色贡献构造检索 query，从小说知识库召回行文片段，注入提示词用于“学表达、学节奏”，禁止照抄句子或复用原情节。
 - RAG 入库来源：`paths.rag_source_dir` 下 `.txt` 文件（递归扫描）；命令为 `uv run python -m src.cli rag-index [--source-dir ...] [--rebuild]`。
+- RAG 向量库切换：
+  - `rag.vector_store: "milvus"`：使用 Milvus（通过 `rag.milvus.uri/token/db_name/...` 连接）。
+  - 首次在 Milvus 新建集合时，建议显式设置 `rag.milvus.dim` 为 Embedding 维度。
+  - `rag.vector_store: "chroma"`：使用本地 Chroma（使用 `paths.rag_vector_db_dir`）。
+  - 从 Chroma 切到 Milvus 后，请执行一次 `uv run python -m src.cli rag-index --rebuild` 重建索引。
 
 ## 切换 Provider（简版）
 

@@ -13,6 +13,8 @@ from .retriever import NovelRAGRetriever
 def resolve_rag_config(project_config: Dict[str, Any]) -> Dict[str, Any]:
     rag = project_config.get("rag") or {}
     paths = project_config.get("paths") or {}
+    vector_store = _resolve_vector_store(rag.get("vector_store"))
+    milvus = rag.get("milvus") if isinstance(rag.get("milvus"), dict) else {}
     retriever_top_k = max(int(rag.get("retriever_top_k", 6)), 1)
     mmr_lambda = float(rag.get("mmr_lambda", 0.65))
     mmr_prefetch_factor = float(rag.get("mmr_prefetch_factor", 4.0))
@@ -20,6 +22,7 @@ def resolve_rag_config(project_config: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "enabled": bool(rag.get("enabled", False)),
+        "vector_store": vector_store,
         "embedding_model": str(rag.get("embedding_model") or "embedding-3"),
         "embedding_batch_size": max(1, min(int(rag.get("embedding_batch_size", 64)), 64)),
         "chunk_size_chars": max(int(rag.get("chunk_size_chars", 420)), 80),
@@ -35,7 +38,34 @@ def resolve_rag_config(project_config: Dict[str, Any]) -> Dict[str, Any]:
         "vector_db_dir": str(paths.get("rag_vector_db_dir") or "data/rag/chroma"),
         "source_dir": str(paths.get("rag_source_dir") or "data/rag/source_txt"),
         "collection": str(paths.get("rag_collection") or "novel_style_cases"),
+        "milvus_uri": str(milvus.get("uri") or "http://127.0.0.1:19530"),
+        "milvus_token": str(milvus.get("token") or ""),
+        "milvus_db_name": str(milvus.get("db_name") or "default"),
+        "milvus_consistency_level": str(milvus.get("consistency_level") or "Session"),
+        "milvus_dim": _to_optional_int(milvus.get("dim")),
+        "milvus_use_async_client": bool(milvus.get("use_async_client", False)),
     }
+
+
+def _resolve_vector_store(value: Any) -> str:
+    normalized = str(value or "chroma").strip().lower()
+    aliases = {
+        "local": "chroma",
+        "chromadb": "chroma",
+    }
+    normalized = aliases.get(normalized, normalized)
+    if normalized not in {"chroma", "milvus"}:
+        raise RuntimeError(f"配置错误: rag.vector_store 仅支持 chroma 或 milvus，当前值={value}")
+    return normalized
+
+
+def _to_optional_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    resolved = int(value)
+    if resolved <= 0:
+        return None
+    return resolved
 
 
 def _resolve_retrieval_modes(raw_modes: Any) -> list[str]:
@@ -161,9 +191,16 @@ def build_rag_index(
     resolved_source_dir = Path(source_dir) if source_dir else Path(rag_config["source_dir"])
     embed_model = _build_embed_model(rag_config)
     indexer = NovelRAGIndexer(
+        vector_store=rag_config["vector_store"],
         vector_db_dir=rag_config["vector_db_dir"],
         collection_name=rag_config["collection"],
         embed_model=embed_model,
+        milvus_uri=rag_config["milvus_uri"],
+        milvus_token=rag_config["milvus_token"],
+        milvus_db_name=rag_config["milvus_db_name"],
+        milvus_consistency_level=rag_config["milvus_consistency_level"],
+        milvus_dim=rag_config["milvus_dim"],
+        milvus_use_async_client=rag_config["milvus_use_async_client"],
         logger=logger,
     )
     return indexer.build_from_txt_dir(
@@ -179,15 +216,23 @@ def retrieve_rag_examples(
     *,
     project_config: Dict[str, Any],
     query: str,
+    logger=None,
 ) -> list[Dict[str, Any]]:
     rag_config = resolve_rag_config(project_config)
     if not rag_config["enabled"]:
         return []
     embed_model = _build_embed_model(rag_config)
     retriever = NovelRAGRetriever(
+        vector_store=rag_config["vector_store"],
         vector_db_dir=rag_config["vector_db_dir"],
         collection_name=rag_config["collection"],
         embed_model=embed_model,
+        milvus_uri=rag_config["milvus_uri"],
+        milvus_token=rag_config["milvus_token"],
+        milvus_db_name=rag_config["milvus_db_name"],
+        milvus_consistency_level=rag_config["milvus_consistency_level"],
+        milvus_dim=rag_config["milvus_dim"],
+        milvus_use_async_client=rag_config["milvus_use_async_client"],
     )
     return retriever.retrieve(
         query=query,
@@ -198,4 +243,5 @@ def retrieve_rag_examples(
         mmr_lambda=rag_config["mmr_lambda"],
         mmr_prefetch_factor=rag_config["mmr_prefetch_factor"],
         max_reference_chars=rag_config["max_reference_chars"],
+        logger=logger,
     )

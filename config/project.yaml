@@ -65,6 +65,7 @@ dialogue:
 
 rag:
   enabled: true
+  vector_store: "milvus"
   embedding_model: "embedding-3"
   embedding_batch_size: 64
   chunk_size_chars: 420
@@ -79,6 +80,13 @@ rag:
   mmr_lambda: 0.65
   mmr_prefetch_factor: 4.0
   max_reference_chars: 1600
+  milvus:
+    uri: "http://127.0.0.1:19530"
+    token: ""
+    db_name: "default"
+    consistency_level: "Session"
+    dim: 2048
+    use_async_client: false
 
 paths:
   agents: "config/agents.yaml"

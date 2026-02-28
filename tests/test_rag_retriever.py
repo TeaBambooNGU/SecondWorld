@@ -45,3 +45,17 @@ def test_build_route_retrievers_builds_default_and_mmr():
     assert index.calls[1]["vector_store_query_mode"] == "mmr"
     assert index.calls[1]["similarity_top_k"] == 6
     assert index.calls[1]["vector_store_kwargs"]["mmr_threshold"] == 0.65
+
+
+def test_log_generated_queries_formats_lines():
+    logs: list[str] = []
+    retriever_module._log_generated_queries(logs.append, ["改写A", "改写B"])
+
+    assert len(logs) == 1
+    assert logs[0] == "RAG Query 改写结果:\n1. 改写A\n2. 改写B"
+
+
+def test_log_generated_queries_skips_empty():
+    logs: list[str] = []
+    retriever_module._log_generated_queries(logs.append, [])
+    assert logs == []

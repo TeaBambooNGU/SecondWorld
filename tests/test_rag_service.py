@@ -15,6 +15,7 @@ class _MemoryLogger:
 def test_resolve_rag_config_defaults():
     config = resolve_rag_config({"paths": {}})
     assert config["enabled"] is False
+    assert config["vector_store"] == "chroma"
     assert config["embedding_model"] == "embedding-3"
     assert config["embedding_batch_size"] == 64
     assert config["retriever_top_k"] == 6
@@ -24,6 +25,35 @@ def test_resolve_rag_config_defaults():
     assert config["mmr_lambda"] == 0.65
     assert config["mmr_prefetch_factor"] == 4.0
     assert config["source_dir"] == "data/rag/source_txt"
+    assert config["milvus_uri"] == "http://127.0.0.1:19530"
+    assert config["milvus_db_name"] == "default"
+    assert config["milvus_dim"] is None
+
+
+def test_resolve_rag_config_milvus_values():
+    config = resolve_rag_config(
+        {
+            "rag": {
+                "vector_store": "milvus",
+                "milvus": {
+                    "uri": "http://127.0.0.1:19530",
+                    "token": "root:Milvus",
+                    "db_name": "secondworld",
+                    "consistency_level": "Strong",
+                    "dim": 1024,
+                    "use_async_client": True,
+                },
+            },
+            "paths": {},
+        }
+    )
+    assert config["vector_store"] == "milvus"
+    assert config["milvus_uri"] == "http://127.0.0.1:19530"
+    assert config["milvus_token"] == "root:Milvus"
+    assert config["milvus_db_name"] == "secondworld"
+    assert config["milvus_consistency_level"] == "Strong"
+    assert config["milvus_dim"] == 1024
+    assert config["milvus_use_async_client"] is True
 
 
 def test_resolve_rag_config_fusion_num_queries_min_one():
@@ -177,6 +207,7 @@ def test_rag_indexer_progress_logs_when_no_txt_files(tmp_path: Path):
     source_dir.mkdir(parents=True, exist_ok=True)
     logger = _MemoryLogger()
     indexer = NovelRAGIndexer(
+        vector_store="chroma",
         vector_db_dir=tmp_path / "chroma",
         collection_name="test_collection",
         embed_model=object(),

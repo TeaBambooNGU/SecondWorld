@@ -1081,6 +1081,7 @@ class LangChainPipeline:
             results = retrieve_rag_examples(
                 project_config=self.project,
                 query=query,
+                logger=self._log_info,
             )
         except Exception as exc:
             self._log_info(f"RAG 检索失败，跳过知识库参考: {exc}")

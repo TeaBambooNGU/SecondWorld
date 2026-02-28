@@ -1,12 +1,12 @@
 # 工程架构梳理
 
-- 当前梳理时间: 2026-02-28 16:21:54
+- 当前梳理时间: 2026-02-28 22:17:40
 
 ## 项目概览
 
 - 项目定位: 本地 CLI 多 Agent 小说草稿生成流水线
 - 主要能力: 章节计划生成、角色贡献汇总、导演成稿、修订与终审、状态记录、基于 LlamaIndex 的知识库 RAG 行文参考
-- 关键输出: `chapters/` 最新正文、`chapters/history/` 成稿/修订/终审归档（命名: 成稿/成稿二...、修订一/修订二...、终审/终审二...）、`data/plans/` 计划、`data/state.json` 进度与版本索引、`data/chapter_plot_summaries.json` 章节剧情摘要缓存、`data/world_refs/{chapter_id}/` 世界观素材缓存与 `manifest.json`、`data/rag/chroma/` 小说知识库向量索引、`logs/trace_{chapter}_{YYYY-MM-DD_HH:mm:ss}.log` 追踪日志
+- 关键输出: `chapters/` 最新正文、`chapters/history/` 成稿/修订/终审归档（命名: 成稿/成稿二...、修订一/修订二...、终审/终审二...）、`data/plans/` 计划、`data/state.json` 进度与版本索引、`data/chapter_plot_summaries.json` 章节剧情摘要缓存、`data/world_refs/{chapter_id}/` 世界观素材缓存与 `manifest.json`、`data/rag/chroma/`（Chroma 本地索引，可选）或 Milvus 集合（默认）小说知识库向量索引、`logs/trace_{chapter}_{YYYY-MM-DD_HH:mm:ss}.log` 追踪日志
 
 ## 工程逻辑梳理
 
@@ -23,9 +23,9 @@
 - `src/prompting.py`: ChatPromptTemplate 提示词与风格提示语拼接，包含暗线字段注入、计划/成稿均为 3 版预演择优、角色锚点双注入、成稿字数修正与玄幻编辑复核提示词
 - `src/world_reference_manager.py`: 世界观素材管理，基于章节关键词排序候选素材，调用“素材筛选 Agent”决定迁移全篇或节选，并将结果落盘到工程缓存
 - `src/rag/embeddings.py`: 智谱 Embedding 适配层，基于 LangChain 社区版 `ZhipuAIEmbeddings`，并加入 64 条上限分批
-- `src/rag/indexer.py`: 小说 `.txt` 语料读取、清洗与切分（章节标题识别 + 段落优先 + 长段兜底滑窗）并写入 LlamaIndex+Chroma
-- `src/rag/retriever.py`: 基于 LlamaIndex 的向量检索，返回成稿可用的行文片段
-- `src/rag/service.py`: RAG 配置解析、检索 query 构建、检索结果格式化、CLI 索引构建入口
+- `src/rag/indexer.py`: 小说 `.txt` 语料读取、清洗与切分（章节标题识别 + 段落优先 + 长段兜底滑窗）并写入 LlamaIndex（支持 Chroma/Milvus 切换）
+- `src/rag/retriever.py`: 基于 LlamaIndex 的多路检索融合（`default+mmr`），通过 `QueryFusionRetriever(mode=reciprocal_rerank)` 做 RRF 融合（支持 Chroma/Milvus 切换），并记录 query 改写结果到日志
+- `src/rag/service.py`: RAG 配置解析（含 `rag.vector_store` 与 `rag.milvus.*`）、检索 query 构建、检索结果格式化、CLI 索引构建入口
 - `src/parsers.py`: JSON 提取与自修复解析
 - `src/validators.py`: 计划/复核/贡献 JSON 校验与正文长度检查
 - `src/config_loader.py`: 读取 YAML/文本配置与环境变量，统一解析 `api + providers` 生效配置（含 Anthropic `model_name` 与 `thinking`）
@@ -33,7 +33,7 @@
 
 ### 依赖关系
 
-- 外部依赖: `langchain`、`langchain-deepseek`、`langchain-openai`、`langchain-anthropic`、`langgraph`、`pyyaml`、`python-dotenv`、`llama-index`、`chromadb`、`llama-index-vector-stores-chroma`、`langchain-community`、`zhipuai`
+- 外部依赖: `langchain`、`langchain-deepseek`、`langchain-openai`、`langchain-anthropic`、`langgraph`、`pyyaml`、`python-dotenv`、`llama-index`、`chromadb`、`llama-index-vector-stores-chroma`、`pymilvus`、`llama-index-vector-stores-milvus`、`langchain-community`、`zhipuai`
 - 内部依赖: `src/langchain_pipeline.py` 调用 chains/prompting/parsers/validators/langchain_client/config_loader/utils 协作完成主流程
 
 ### 数据流/控制流
@@ -53,9 +53,9 @@
 - 成稿提示词 = 章节计划 + 角色贡献 + 风格提示语 + 成稿示例段落（学习特点）+ RAG 行文参考（来自小说知识库检索）
 - 计划提示词新增“连续性上下文”：按章节顺序读取已生成章节，紧邻当前章节的前 3 章注入全文，其余章节注入剧情摘要（来自摘要缓存）
 - 计划/成稿/编辑复核提示词 = 原有输入 + 可选世界观参考（来自缓存，允许直接引用设定内容，禁止生造设定）
-- `rag-index` 命令读取 `paths.rag_source_dir`（可被 `--source-dir` 覆盖）的 `.txt` 文件，先清洗抓取噪声（过滤 `ps*`/`（ps:）`、`(本章完)`、分隔线、相邻重复章节标题）后按“章节标题->段落优先”切分，超长段落再按 `rag.chunk_*` 兜底滑窗，最终写入 `paths.rag_vector_db_dir` / `paths.rag_collection`
+- `rag-index` 命令读取 `paths.rag_source_dir`（可被 `--source-dir` 覆盖）的 `.txt` 文件，先清洗抓取噪声（过滤 `ps*`/`（ps:）`、`(本章完)`、分隔线、相邻重复章节标题）后按“章节标题->段落优先”切分，超长段落再按 `rag.chunk_*` 兜底滑窗，最终按 `rag.vector_store` 写入 Chroma（`paths.rag_vector_db_dir`）或 Milvus（`rag.milvus.*` + `paths.rag_collection`）
 - RAG 语料读取编码按 `utf-8 -> utf-8-sig -> gb18030` 依次尝试，兼容 GB2312 文本
-- 成稿前基于章节计划与角色贡献构造 RAG query，从知识库检索 `rag.retriever_top_k` 个片段（受 `rag.max_reference_chars` 限制）并注入提示词，要求“学表达，不抄句，不复用情节”
+- 成稿前基于章节计划与角色贡献构造 RAG query，按 `rag.retrieval_modes` 组装子检索器（默认 `default+mmr`），再由 `QueryFusionRetriever(mode=reciprocal_rerank)` 做 RRF 融合；`rag.fusion_num_queries>1` 时触发 query 改写，改写结果写入 trace 日志；最终按 `rag.retriever_top_k` 与 `rag.max_reference_chars` 截断后注入提示词，要求“学表达，不抄句，不复用情节”
 - 成稿/修订/终审正文 -> 最新正文写入 `chapters/{chapter_id}_{slug}.md` -> 版本归档写入 `chapters/history/{chapter_id}_{slug}_{成稿|成稿二...|修订一|修订二...|终审|终审二...}.md` -> 版本索引写入 `data/state.json`
 - 风格提示语由 `config/style_guide/anti_ai_rules.md`、`config/style_guide/agents/{角色名}.md`（主角/配角）与 `config/style_guide/agents/{暴烈型|谨慎型|仁善型|冷静型}.md`（龙套类）、`config/style_guide/agents/director/{plan|draft|revision|final}.md` 与 `config/style_guide/components/{type}/{id}.md` 组合后注入 system 提示词
 - 计划/成稿/修订/终审/字数修正提示词统一启用“双锚点角色一致性策略”：在 user 中段注入“内部确认仍遵守 system 角色”，并在 user 末尾再注入一次自检提示，以降低后文偏置导致的角色约束漂移（确认语不写入最终输出）
@@ -75,7 +75,7 @@
 
 - `config/project.yaml`: API、生成参数与路径
 - `config/project.yaml` 现采用“双层配置”：`api` 仅声明当前生效 provider，`providers.*` 维护各 provider 的 endpoint/模型/密钥环境变量
-- `config/project.yaml` 新增 `rag.*`：是否启用、Embedding 模型/分批、文本切分、检索 top_k 与参考字符预算
+- `config/project.yaml` 新增 `rag.*`：是否启用、向量库类型（`rag.vector_store`）、Milvus 连接参数（`rag.milvus.*`）、Embedding 模型/分批、文本切分、检索模式（`rag.retrieval_modes`）、融合 query 数（`rag.fusion_num_queries`）、融合异步开关（`rag.fusion_use_async`）、MMR 参数（`rag.mmr_lambda`/`rag.mmr_prefetch_factor`）、检索 top_k（统一使用 `rag.retriever_top_k`）与参考字符预算
 - `config/project.yaml` 新增 `paths.plot_summary_cache_path`，用于章节剧情摘要持久化缓存
 - `config/project.yaml` 新增 `paths.rag_source_dir`、`paths.rag_vector_db_dir`、`paths.rag_collection`，用于知识库语料与索引存储
 - 当前 RAG 语料目录配置: `paths.rag_source_dir=data/rag/novel_txt`
@@ -102,7 +102,7 @@
 
 - 运行步骤: chapter 命令先读取计划（缺失则自动补跑 plan；plan 阶段会注入章节连续性上下文并引入可选世界观参考）-> 世界观素材筛选 Agent 按需迁移全篇/片段到 `data/world_refs/{chapter_id}/` -> 按并发配置生成角色贡献 -> RAG 检索知识库行文片段并注入成稿提示词 -> 成稿并可流式输出（含可选世界观参考与 RAG 参考） -> 编辑复核 JSON（含可选世界观参考） -> 修订（满足条件时，不注入世界观参考） -> 反AI高频词审核清理 -> 终审（无条件执行，不注入世界观参考） -> 生成当前章剧情摘要并写入缓存 -> 每次成稿/修订/终审归档版本
 - 异常/边界处理: 缺少 API Key 直接报错；provider 缺少必填模型字段（Anthropic `model_name` / 其他 provider `model`）时报配置错误；章节文件已存在且未 `--force` 则中止；流式失败自动回退为非流式；计划/贡献/复核 JSON 多轮修复后仍不合法则中止；RAG 缺少 `ZHIPUAI_API_KEY` 或向量库为空时仅跳过 RAG 参考，不中断成稿主流程
-- 观测与日志: `--trace` 写入 `logs/trace_{chapter}_{YYYY-MM-DD_HH:mm:ss}.log`，章节状态写入 `data/state.json`，可选启用 LangSmith 跟踪
+- 观测与日志: `--trace` 写入 `logs/trace_{chapter}_{YYYY-MM-DD_HH:mm:ss}.log`，章节状态写入 `data/state.json`，RAG 阶段额外记录 query 与 QueryFusion 改写结果（`RAG Query 改写结果`），可选启用 LangSmith 跟踪
 
 ### 观测与追踪（LangSmith）
 
@@ -117,6 +117,18 @@ export LANGSMITH_PROJECT=your_langsmith_project
 ```
 
 ## 改动概要/变更记录
+
+### 2026-02-28 22:17:40
+
+- 本次新增/更新要点: RAG 检索策略升级为 LlamaIndex 官方多路融合：`src/rag/retriever.py` 使用 `QueryFusionRetriever(mode=reciprocal_rerank)` 融合 `default+mmr` 子检索器；删除多余 top_k 变量，仅保留 `rag.retriever_top_k`；配置更新为 `rag.retrieval_modes`、`rag.fusion_num_queries`、`rag.fusion_use_async`、`rag.mmr_lambda`、`rag.mmr_prefetch_factor`；新增 query 改写日志落盘（`RAG Query 改写结果`）
+- 变更动机/需求来源: 用户要求将“多路召回 + RRF”切换为 LlamaIndex 内置实现，并开启多 query 改写可观测日志，便于定位检索行为
+- 当前更新时间: 2026-02-28 22:17:40
+
+### 2026-02-28 22:03:29
+
+- 本次新增/更新要点: RAG 向量库新增 Milvus 扩展并保留 Chroma：`rag.vector_store` 支持 `chroma|milvus`；`src/rag/indexer.py` 与 `src/rag/retriever.py` 按配置动态切换后端；`config/project.yaml` 默认切换为 `milvus` 并新增 `rag.milvus.*` 连接配置
+- 变更动机/需求来源: 用户本地已部署 Milvus Docker，要求在不移除 Chroma 的前提下通过配置切换后端并重建索引
+- 当前更新时间: 2026-02-28 22:03:29
 
 ### 2026-02-28 16:21:54
 
