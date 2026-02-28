@@ -19,7 +19,10 @@ class LangChainClient:
     def _normalize_provider(value: Any) -> str:
         if not value:
             return "deepseek"
-        return str(value).strip().lower()
+        normalized = str(value).strip().lower()
+        if normalized == "chatgpt":
+            return "openai"
+        return normalized
 
     def build_llm(
         self,

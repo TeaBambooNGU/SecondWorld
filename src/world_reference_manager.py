@@ -155,8 +155,10 @@ class WorldReferenceManager:
         return files
 
     def _is_excluded(self, file_name: str) -> bool:
+        normalized_name = file_name.casefold()
         for pattern in self.exclude_patterns:
-            if fnmatch.fnmatch(file_name, pattern):
+            # 使用大小写不敏感匹配，避免 CLAUDE.md 无法过滤 Claude.md。
+            if fnmatch.fnmatchcase(normalized_name, pattern.casefold()):
                 return True
         return False
 

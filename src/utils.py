@@ -35,22 +35,36 @@ def slugify(value: str) -> str:
 
 
 def extract_json(text: str) -> str | None:
+    candidates: list[str] = []
+
     fenced_blocks = re.findall(r"```(?:json|JSON)\s*([\s\S]*?)```", text)
     for block in fenced_blocks:
         candidate = _extract_balanced_json_object(block)
         if candidate:
-            return candidate
+            candidates.append(candidate)
 
     generic_blocks = re.findall(r"```\s*([\s\S]*?)```", text)
     for block in generic_blocks:
         candidate = _extract_balanced_json_object(block)
         if candidate:
-            return candidate
+            candidates.append(candidate)
 
-    return _extract_balanced_json_object(text)
+    candidates.extend(_extract_balanced_json_objects(text))
+
+    if not candidates:
+        return None
+    return candidates[-1]
 
 
 def _extract_balanced_json_object(text: str) -> str | None:
+    objects = _extract_balanced_json_objects(text)
+    if not objects:
+        return None
+    return objects[0]
+
+
+def _extract_balanced_json_objects(text: str) -> list[str]:
+    objects: list[str] = []
     depth = 0
     start: int | None = None
     in_string = False
@@ -79,9 +93,10 @@ def _extract_balanced_json_object(text: str) -> str | None:
         if char == "}" and depth > 0:
             depth -= 1
             if depth == 0 and start is not None:
-                return text[start : idx + 1]
+                objects.append(text[start : idx + 1])
+                start = None
 
-    return None
+    return objects
 
 
 def extract_forbidden_terms(text: str) -> list[str]:

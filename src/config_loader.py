@@ -36,7 +36,10 @@ def _enable_langsmith_tracing() -> None:
 def _normalize_provider(value: Any) -> str:
     if not value:
         return "deepseek"
-    return str(value).strip().lower()
+    normalized = str(value).strip().lower()
+    if normalized == "chatgpt":
+        return "openai"
+    return normalized
 
 
 def _first_non_empty(mapping: Dict[str, Any], *keys: str) -> Any:

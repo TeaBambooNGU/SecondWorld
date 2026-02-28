@@ -43,3 +43,19 @@ def test_parse_json_with_repair_handles_unescaped_quotes_in_value():
     )
     assert parsed is not None
     assert parsed["goal"] == '打手在门口说了句"没动静"后离开'
+
+
+def test_extract_json_prefers_last_json_when_think_block_contains_dummy_payload():
+    content = """<think>```json
+{
+  "beats": 5,
+  "cast": ["于皓"]
+}
+```</think>
+
+{"chapter_id":"0005","title":"被拎去看脏账","goal":"验证尾部 JSON 优先","beats":[],"cast":[],"conflicts":[],"pacing_notes":"快","word_target":3600}
+"""
+    extracted = extract_json(content)
+    assert extracted is not None
+    parsed = json.loads(extracted)
+    assert parsed["chapter_id"] == "0005"

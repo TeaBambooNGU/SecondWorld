@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import src.langchain_pipeline as langchain_pipeline_module
 from src.langchain_pipeline import LangChainPipeline
 
 
@@ -140,3 +141,42 @@ def test_get_or_create_plot_summary_ignores_state_summary_and_generates(tmp_path
     assert counter["calls"] == 1
     assert summary == "生成摘要-0002-第二章-4"
     assert cache_data["0002"]["source"] == "llm_generated"
+
+
+def test_build_rag_references_logs_query_and_results(tmp_path, monkeypatch):
+    pipeline = _new_pipeline(tmp_path)
+    logs: list[str] = []
+    pipeline._log_info = logs.append  # type: ignore[method-assign]
+
+    monkeypatch.setattr(langchain_pipeline_module, "resolve_rag_config", lambda _: {"enabled": True})
+    monkeypatch.setattr(langchain_pipeline_module, "build_rag_query", lambda *_args, **_kwargs: "测试query")
+    monkeypatch.setattr(
+        langchain_pipeline_module,
+        "retrieve_rag_examples",
+        lambda *_args, **_kwargs: [{"text": "命中片段", "file_name": "a.txt", "chunk_index": 1}],
+    )
+    monkeypatch.setattr(langchain_pipeline_module, "format_rag_references", lambda _results: "参考片段内容")
+
+    result = pipeline._build_rag_references(plan={}, contributions={})
+
+    assert result == "参考片段内容"
+    assert "RAG 检索 query:\n测试query" in logs
+    assert "RAG 检索结果:\n参考片段内容" in logs
+    assert "RAG 检索完成，命中片段数=1" in logs
+
+
+def test_build_rag_references_logs_empty_results(tmp_path, monkeypatch):
+    pipeline = _new_pipeline(tmp_path)
+    logs: list[str] = []
+    pipeline._log_info = logs.append  # type: ignore[method-assign]
+
+    monkeypatch.setattr(langchain_pipeline_module, "resolve_rag_config", lambda _: {"enabled": True})
+    monkeypatch.setattr(langchain_pipeline_module, "build_rag_query", lambda *_args, **_kwargs: "测试query")
+    monkeypatch.setattr(langchain_pipeline_module, "retrieve_rag_examples", lambda *_args, **_kwargs: [])
+
+    result = pipeline._build_rag_references(plan={}, contributions={})
+
+    assert result == ""
+    assert "RAG 检索 query:\n测试query" in logs
+    assert "RAG 检索结果: []" in logs
+    assert "RAG 检索无结果，跳过知识库参考" in logs

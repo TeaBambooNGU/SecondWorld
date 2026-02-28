@@ -152,6 +152,7 @@ def test_discover_material_files_applies_exclude_patterns_and_no_recursion(tmp_p
     nested_dir.mkdir()
 
     (source_dir / "CLAUDE.md").write_text("x", encoding="utf-8")
+    (source_dir / "Claude.md").write_text("x", encoding="utf-8")
     (source_dir / "AGENTS.md").write_text("x", encoding="utf-8")
     (source_dir / "当前问题.md").write_text("x", encoding="utf-8")
     (source_dir / "提示语修正.md").write_text("x", encoding="utf-8")
@@ -176,3 +177,4 @@ def test_discover_material_files_applies_exclude_patterns_and_no_recursion(tmp_p
     names = [path.name for path in files]
 
     assert names == ["世界观修炼体系.md"]
+    assert "Claude.md" not in names

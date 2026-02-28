@@ -17,7 +17,7 @@ uv sync
 
 ```bash
 cp config/.env.example .env
-# 编辑 .env，设置对应 provider 的 API Key（例如 `DEEPSEEK_API_KEY` 或 `ANTHROPIC_API_KEY`）
+# 编辑 .env，设置对应 provider 的 API Key（例如 `OPENAI_API_KEY`、`DEEPSEEK_API_KEY` 或 `ANTHROPIC_API_KEY`）
 # 若启用 RAG，请额外设置 `ZHIPUAI_API_KEY`（用于智谱 Embedding）
 # 可选：填写 LANGSMITH_* 环境变量；当设置 LANGSMITH_API_KEY 且未显式设置 LANGSMITH_TRACING 时默认开启追踪
 ```
@@ -74,7 +74,8 @@ uv run python -m src.cli rag-index --rebuild
 
 - 流式输出由 `config/project.yaml` 中的 `api.stream` 控制，也可用 `--no-stream` 关闭。
 - 章节字数由 `generation.chapter_min_chars` 与 `generation.chapter_max_chars` 控制。
-- 模型类型由 `api.provider` 控制，默认 `deepseek`，可选 `openai`、`anthropic`。
+- 模型类型由 `api.provider` 控制，默认 `openai`（中转站 `https://code.ppchat.vip/v1` + `gpt-5.2-codex`），可选 `deepseek`、`anthropic`。
+- `openai` 可使用中转站 endpoint（例如 `https://code.ppchat.vip/v1`），并通过环境变量读取密钥（例如 `OPENAI_API_KEY`）。
 - `anthropic` 支持中转站 endpoint（例如 `https://code.ppchat.vip`），并通过环境变量读取密钥（例如 `ANTHROPIC_API_KEY`）。
 - `anthropic` 默认开启 `thinking`（`providers.anthropic.thinking.type=enabled` + `budget_tokens`），可在配置中调整或关闭。
 - 当使用 `anthropic` 时，请先安装依赖：`uv add langchain-anthropic`。
@@ -85,8 +86,8 @@ uv run python -m src.cli rag-index --rebuild
 
 ## 切换 Provider（简版）
 
-1) 在 `config/project.yaml` 修改 `api.provider`（如 `anthropic` 或 `deepseek`）。
+1) 在 `config/project.yaml` 修改 `api.provider`（如 `openai`、`anthropic` 或 `deepseek`，`chatgpt` 也会自动映射到 `openai`）。
    - `anthropic` 使用 `providers.anthropic.model_name`
    - `deepseek/openai` 使用 `providers.<provider>.model`
-2) 在 `.env` 配置对应密钥（如 `ANTHROPIC_API_KEY` 或 `DEEPSEEK_API_KEY`）。
+2) 在 `.env` 配置对应密钥（如 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 或 `DEEPSEEK_API_KEY`）。
 3) 重新执行命令（如 `uv run python -m src.cli chapter --chapter 0001`）。

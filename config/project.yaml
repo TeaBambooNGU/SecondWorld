@@ -3,6 +3,19 @@ project:
   language: "zh"
 
 providers:
+  openai:
+    baseUrl: "https://code.ppchat.vip/v1"
+    api: "openai-completions"
+    apiKeyEnv: "OPENAI_API_KEY"
+    model: "gpt-5.2-codex"
+    timeoutSec: 120
+    maxRetries: 3
+    stream: true
+    models:
+      - id: "gpt-5.3-codex"
+        name: "GPT-5.3 Codex"
+      - id: "gpt-5.2"
+        name: "GPT-5.2"
   anthropic:
     baseUrl: "https://code.ppchat.vip"
     api: "anthropic-messages"

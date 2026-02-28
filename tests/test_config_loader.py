@@ -83,3 +83,41 @@ def test_get_api_key_reads_env_only(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY")
     with pytest.raises(RuntimeError, match="Missing API key in env var: ANTHROPIC_API_KEY"):
         get_api_key(api)
+
+
+def test_resolve_api_config_supports_openai_proxy_provider():
+    project = {
+        "api": {"provider": "openai"},
+        "providers": {
+            "openai": {
+                "baseUrl": "https://code.ppchat.vip/v1",
+                "api": "openai-completions",
+                "model": "gpt-5.2-codex",
+                "apiKeyEnv": "OPENAI_API_KEY",
+                "models": [{"id": "gpt-5.2-codex"}],
+            }
+        },
+    }
+
+    api = resolve_api_config(project)
+    assert api["provider"] == "openai"
+    assert api["base_url"] == "https://code.ppchat.vip/v1"
+    assert api["model"] == "gpt-5.2-codex"
+    assert api["api_key_env"] == "OPENAI_API_KEY"
+    assert api["api_type"] == "openai-completions"
+
+
+def test_resolve_api_config_maps_chatgpt_to_openai():
+    project = {
+        "api": {"provider": "chatgpt"},
+        "providers": {
+            "openai": {
+                "baseUrl": "https://code.ppchat.vip/v1",
+                "model": "gpt-5.2-codex",
+            }
+        },
+    }
+
+    api = resolve_api_config(project)
+    assert api["provider"] == "openai"
+    assert api["model"] == "gpt-5.2-codex"

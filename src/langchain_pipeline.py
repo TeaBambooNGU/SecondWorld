@@ -1077,6 +1077,7 @@ class LangChainPipeline:
             return ""
         try:
             query = build_rag_query(plan, contributions)
+            self._log_info(f"RAG 检索 query:\n{query}")
             results = retrieve_rag_examples(
                 project_config=self.project,
                 query=query,
@@ -1085,10 +1086,12 @@ class LangChainPipeline:
             self._log_info(f"RAG 检索失败，跳过知识库参考: {exc}")
             return ""
         if not results:
+            self._log_info("RAG 检索结果: []")
             self._log_info("RAG 检索无结果，跳过知识库参考")
             return ""
         references = format_rag_references(results)
         if references:
+            self._log_info(f"RAG 检索结果:\n{references}")
             self._log_info(f"RAG 检索完成，命中片段数={len(results)}")
         return references
 
