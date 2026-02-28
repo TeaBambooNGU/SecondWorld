@@ -1,6 +1,6 @@
 # 工程架构梳理
 
-- 当前梳理时间: 2026-02-25 15:38:52
+- 当前梳理时间: 2026-02-28 14:58:22
 
 ## 项目概览
 
@@ -17,10 +17,10 @@
 
 ### 核心模块
 
-- `src/langchain_pipeline.py`: LangChain/LCEL 主流水线，组织计划生成、角色贡献、成稿、复核、修订、反AI清理、终审与状态落盘
+- `src/langchain_pipeline.py`: LangChain/LCEL 主流水线，组织计划生成、角色贡献、贡献清洗（移除 `sensory_anchor`）、成稿、复核、修订、反AI清理、终审与状态落盘
 - `src/langchain_client.py`: 多 Provider LLM 客户端工厂，按 provider 构建 DeepSeek/OpenAI/Anthropic 实例，并透传温度、采样与 Anthropic thinking 参数
 - `src/chains/*`: 分阶段 LCEL 链（计划/角色贡献/成稿/复核/修订/反AI/终审）
-- `src/prompting.py`: ChatPromptTemplate 提示词与风格提示语拼接，包含暗线字段注入、计划 3 版预演择优与成稿 6 版预演择优约束、成稿字数修正与玄幻编辑复核提示词
+- `src/prompting.py`: ChatPromptTemplate 提示词与风格提示语拼接，包含暗线字段注入、计划/成稿均为 3 版预演择优、角色锚点双注入、成稿字数修正与玄幻编辑复核提示词
 - `src/world_reference_manager.py`: 世界观素材管理，基于章节关键词排序候选素材，调用“素材筛选 Agent”决定迁移全篇或节选，并将结果落盘到工程缓存
 - `src/parsers.py`: JSON 提取与自修复解析
 - `src/validators.py`: 计划/复核/贡献 JSON 校验与正文长度检查
@@ -39,10 +39,10 @@
 - 角色组件 `config/style_guide/components/{personality|background|identity}/*.md` + 角色配置 `config/agents.yaml`（主角/配角按角色名，龙套使用 archetype） -> 角色画像（含 traits）
 - 启动阶段由 `resolve_api_config` 合并 `api` 与 `providers`：按 `api.provider` 选中 provider 配置，解析 `baseUrl/base_url`、`apiKeyEnv/api_key_env`、`timeout`、`max_retries`、`stream` 与 `thinking`
 - Provider 模型字段按类型区分：Anthropic 要求 `model_name`；DeepSeek/OpenAI 使用 `model`（或 `models[].id`）
-- 角色画像 + 角色提示语 -> 角色贡献链路（`generation.agent_concurrency`>1 时并行执行；JSON 解析与自修复） -> 导演成稿链路 -> 编辑复核 JSON -> 修订（`max_turns`>1 且 suggestions 非空时触发） -> 反AI高频词审核清理 -> 终审 -> 状态写入 `data/state.json`
+- 角色画像 + 角色提示语 -> 角色贡献链路（`generation.agent_concurrency`>1 时并行执行；JSON 解析与自修复） -> 贡献结果清洗（移除 `highlights[*].sensory_anchor`） -> 导演成稿链路 -> 编辑复核 JSON -> 修订（`max_turns`>1 且 suggestions 非空时触发） -> 反AI高频词审核清理 -> 终审 -> 状态写入 `data/state.json`
 - 编辑复核输出 JSON（summary/issues/suggestions/pacing_score），并作为后续修订与状态摘要来源
 - 成稿字数不达标时触发补写/压缩修正链路
-- 计划提示词要求“内部预演 3 版择优输出”；成稿提示词要求“内部预演 6 版，放弃前 3 版，从后 3 版择优输出”
+- 计划提示词与成稿提示词均要求“内部预演 3 版择优输出”
 - Chapter 流程新增“素材筛选 Agent”：从 `paths.world_materials_dir` 读取素材后，按相关性排序并优先批量调用筛选提示词；当批次内容超出输入预算时自动分批调用，决定 `full/excerpt/skip` 后写入 `data/world_refs/{chapter_id}/` 再组装为计划/成稿/复核阶段可选参考
 - 世界观素材读取仅扫描 `paths.world_materials_dir` 当前目录，不递归子目录，并按 `paths.world_materials_exclude_patterns` 过滤文件（支持通配符）
 - 计划/写作相关 Agent（计划/成稿/复核）只读取工程缓存中的提取结果，不直接读取外部素材目录，以降低噪音与上下文漂移
@@ -56,7 +56,7 @@
 - 编辑复核阶段由 `build_post_check_prompt` 组装复核提示词，在 `LangChainPipeline._post_check` 中通过 `build_post_check_chain` 调用，阶段标记为“修订-复核”
 - 反AI清理阶段在命中高频词后触发，`build_anti_ai_cleanup_prompt` 组装清理提示词，在 `LangChainPipeline.run_chapter` 中通过 `build_anti_ai_cleanup_chain` 调用，阶段标记为“修订-反AI”
 - 所有主生成链路（计划/角色贡献/成稿/复核/修订/终审）统一透传 `temperature`、`top_p` 与可选 `top_k`；JSON 修复链路固定 `temperature=0`、`top_p=1`、`top_k=None`
-- Anthropic provider 默认透传 `thinking` 参数（当前配置为 `{"type":"adaptive"}`）以开启自适应思考模式
+- Anthropic provider 默认透传 `thinking` 参数（当前配置为 `{"type":"enabled","budget_tokens":2048}`），并支持在 `providers.anthropic.thinking` 覆盖
 
 ### 成稿版本留存
 
@@ -85,7 +85,7 @@
 - `config/style_guide/components/`: 性格/背景/身份提示语
 - `.env`: API Key（`DEEPSEEK_API_KEY` / `ANTHROPIC_API_KEY`）
 - 当前生效配置: `api.provider=anthropic`，使用中转站 endpoint `https://code.ppchat.vip`，模型字段为 `providers.anthropic.model_name`
-- `config/project.yaml` 新增/扩展 `providers.*`、`generation.agent_concurrency`、`generation.top_k` 与 `dialogue.*` 并保持向后兼容
+- `config/project.yaml` 新增/扩展 `providers.*`、`generation.agent_concurrency`、`generation.top_k`、`generation.world_selector_batch_chars` 与 `dialogue.*` 并保持向后兼容
 
 ### 运行流程
 
@@ -106,6 +106,12 @@ export LANGSMITH_PROJECT=your_langsmith_project
 ```
 
 ## 改动概要/变更记录
+
+### 2026-02-28 14:58:22
+
+- 本次新增/更新要点: 同步最新代码实现：成稿预演策略统一为“内部 3 版择优”；补充角色贡献清洗（移除 `sensory_anchor`）与提示词约束（禁解释腔/禁拆分感官字段）；更新 Anthropic `thinking` 当前配置为 `{"type":"enabled","budget_tokens":2048}`；补充 `generation.world_selector_batch_chars` 配置项
+- 变更动机/需求来源: 用户要求“根据最新代码更新 architecture.md”
+- 当前更新时间: 2026-02-28 14:58:22
 
 ### 2026-02-25 15:38:52
 
