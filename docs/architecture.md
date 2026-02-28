@@ -1,12 +1,12 @@
 # 工程架构梳理
 
-- 当前梳理时间: 2026-02-28 14:58:22
+- 当前梳理时间: 2026-02-28 16:21:54
 
 ## 项目概览
 
 - 项目定位: 本地 CLI 多 Agent 小说草稿生成流水线
-- 主要能力: 章节计划生成、角色贡献汇总、导演成稿、修订与终审、状态记录
-- 关键输出: `chapters/` 最新正文、`chapters/history/` 成稿/修订/终审归档（命名: 成稿/成稿二...、修订一/修订二...、终审/终审二...）、`data/plans/` 计划、`data/state.json` 进度与版本索引、`data/chapter_plot_summaries.json` 章节剧情摘要缓存、`data/world_refs/{chapter_id}/` 世界观素材缓存与 `manifest.json`、`logs/trace_{chapter}_{YYYY-MM-DD_HH:mm:ss}.log` 追踪日志
+- 主要能力: 章节计划生成、角色贡献汇总、导演成稿、修订与终审、状态记录、基于 LlamaIndex 的知识库 RAG 行文参考
+- 关键输出: `chapters/` 最新正文、`chapters/history/` 成稿/修订/终审归档（命名: 成稿/成稿二...、修订一/修订二...、终审/终审二...）、`data/plans/` 计划、`data/state.json` 进度与版本索引、`data/chapter_plot_summaries.json` 章节剧情摘要缓存、`data/world_refs/{chapter_id}/` 世界观素材缓存与 `manifest.json`、`data/rag/chroma/` 小说知识库向量索引、`logs/trace_{chapter}_{YYYY-MM-DD_HH:mm:ss}.log` 追踪日志
 
 ## 工程逻辑梳理
 
@@ -22,6 +22,10 @@
 - `src/chains/*`: 分阶段 LCEL 链（计划/角色贡献/成稿/复核/修订/反AI/终审）
 - `src/prompting.py`: ChatPromptTemplate 提示词与风格提示语拼接，包含暗线字段注入、计划/成稿均为 3 版预演择优、角色锚点双注入、成稿字数修正与玄幻编辑复核提示词
 - `src/world_reference_manager.py`: 世界观素材管理，基于章节关键词排序候选素材，调用“素材筛选 Agent”决定迁移全篇或节选，并将结果落盘到工程缓存
+- `src/rag/embeddings.py`: 智谱 Embedding 适配层，基于 LangChain 社区版 `ZhipuAIEmbeddings`，并加入 64 条上限分批
+- `src/rag/indexer.py`: 小说 `.txt` 语料读取、清洗与切分（章节标题识别 + 段落优先 + 长段兜底滑窗）并写入 LlamaIndex+Chroma
+- `src/rag/retriever.py`: 基于 LlamaIndex 的向量检索，返回成稿可用的行文片段
+- `src/rag/service.py`: RAG 配置解析、检索 query 构建、检索结果格式化、CLI 索引构建入口
 - `src/parsers.py`: JSON 提取与自修复解析
 - `src/validators.py`: 计划/复核/贡献 JSON 校验与正文长度检查
 - `src/config_loader.py`: 读取 YAML/文本配置与环境变量，统一解析 `api + providers` 生效配置（含 Anthropic `model_name` 与 `thinking`）
@@ -29,7 +33,7 @@
 
 ### 依赖关系
 
-- 外部依赖: `langchain`、`langchain-deepseek`、`langchain-openai`、`langchain-anthropic`、`langgraph`、`pyyaml`、`python-dotenv`
+- 外部依赖: `langchain`、`langchain-deepseek`、`langchain-openai`、`langchain-anthropic`、`langgraph`、`pyyaml`、`python-dotenv`、`llama-index`、`chromadb`、`llama-index-vector-stores-chroma`、`langchain-community`、`zhipuai`
 - 内部依赖: `src/langchain_pipeline.py` 调用 chains/prompting/parsers/validators/langchain_client/config_loader/utils 协作完成主流程
 
 ### 数据流/控制流
@@ -46,9 +50,12 @@
 - Chapter 流程新增“素材筛选 Agent”：从 `paths.world_materials_dir` 读取素材后，按相关性排序并优先批量调用筛选提示词；当批次内容超出输入预算时自动分批调用，决定 `full/excerpt/skip` 后写入 `data/world_refs/{chapter_id}/` 再组装为计划/成稿/复核阶段可选参考
 - 世界观素材读取仅扫描 `paths.world_materials_dir` 当前目录，不递归子目录，并按 `paths.world_materials_exclude_patterns` 过滤文件（支持通配符）
 - 计划/写作相关 Agent（计划/成稿/复核）只读取工程缓存中的提取结果，不直接读取外部素材目录，以降低噪音与上下文漂移
-- 成稿提示词 = 章节计划 + 角色贡献 + 风格提示语 + 成稿示例段落（学习特点）
-- 计划提示词新增“连续性上下文”：按章节顺序读取已生成章节，前 3 章注入全文，其余章节注入剧情摘要（来自摘要缓存）
+- 成稿提示词 = 章节计划 + 角色贡献 + 风格提示语 + 成稿示例段落（学习特点）+ RAG 行文参考（来自小说知识库检索）
+- 计划提示词新增“连续性上下文”：按章节顺序读取已生成章节，紧邻当前章节的前 3 章注入全文，其余章节注入剧情摘要（来自摘要缓存）
 - 计划/成稿/编辑复核提示词 = 原有输入 + 可选世界观参考（来自缓存，允许直接引用设定内容，禁止生造设定）
+- `rag-index` 命令读取 `paths.rag_source_dir`（可被 `--source-dir` 覆盖）的 `.txt` 文件，先清洗抓取噪声（过滤 `ps*`/`（ps:）`、`(本章完)`、分隔线、相邻重复章节标题）后按“章节标题->段落优先”切分，超长段落再按 `rag.chunk_*` 兜底滑窗，最终写入 `paths.rag_vector_db_dir` / `paths.rag_collection`
+- RAG 语料读取编码按 `utf-8 -> utf-8-sig -> gb18030` 依次尝试，兼容 GB2312 文本
+- 成稿前基于章节计划与角色贡献构造 RAG query，从知识库检索 `rag.retriever_top_k` 个片段（受 `rag.max_reference_chars` 限制）并注入提示词，要求“学表达，不抄句，不复用情节”
 - 成稿/修订/终审正文 -> 最新正文写入 `chapters/{chapter_id}_{slug}.md` -> 版本归档写入 `chapters/history/{chapter_id}_{slug}_{成稿|成稿二...|修订一|修订二...|终审|终审二...}.md` -> 版本索引写入 `data/state.json`
 - 风格提示语由 `config/style_guide/anti_ai_rules.md`、`config/style_guide/agents/{角色名}.md`（主角/配角）与 `config/style_guide/agents/{暴烈型|谨慎型|仁善型|冷静型}.md`（龙套类）、`config/style_guide/agents/director/{plan|draft|revision|final}.md` 与 `config/style_guide/components/{type}/{id}.md` 组合后注入 system 提示词
 - 计划/成稿/修订/终审/字数修正提示词统一启用“双锚点角色一致性策略”：在 user 中段注入“内部确认仍遵守 system 角色”，并在 user 末尾再注入一次自检提示，以降低后文偏置导致的角色约束漂移（确认语不写入最终输出）
@@ -68,7 +75,10 @@
 
 - `config/project.yaml`: API、生成参数与路径
 - `config/project.yaml` 现采用“双层配置”：`api` 仅声明当前生效 provider，`providers.*` 维护各 provider 的 endpoint/模型/密钥环境变量
+- `config/project.yaml` 新增 `rag.*`：是否启用、Embedding 模型/分批、文本切分、检索 top_k 与参考字符预算
 - `config/project.yaml` 新增 `paths.plot_summary_cache_path`，用于章节剧情摘要持久化缓存
+- `config/project.yaml` 新增 `paths.rag_source_dir`、`paths.rag_vector_db_dir`、`paths.rag_collection`，用于知识库语料与索引存储
+- 当前 RAG 语料目录配置: `paths.rag_source_dir=data/rag/novel_txt`
 - `config/agents.yaml`: 角色档案、组件引用与 traits
 - `config/style_guide/components/`: 性格/背景/身份组件
 - `config/outline.yaml`: 章节大纲
@@ -84,13 +94,14 @@
 - `paths.world_materials_exclude_patterns`: 世界观素材过滤规则（如 `CLAUDE.md`、`AGENTS.md`、`*第*卷*.md` 等）
 - `config/style_guide/components/`: 性格/背景/身份提示语
 - `.env`: API Key（`DEEPSEEK_API_KEY` / `ANTHROPIC_API_KEY`）
+- `.env`: RAG Embedding Key（`ZHIPUAI_API_KEY`）
 - 当前生效配置: `api.provider=anthropic`，使用中转站 endpoint `https://code.ppchat.vip`，模型字段为 `providers.anthropic.model_name`
 - `config/project.yaml` 新增/扩展 `providers.*`、`generation.agent_concurrency`、`generation.top_k`、`generation.world_selector_batch_chars` 与 `dialogue.*` 并保持向后兼容
 
 ### 运行流程
 
-- 运行步骤: chapter 命令先读取计划（缺失则自动补跑 plan；plan 阶段会注入章节连续性上下文并引入可选世界观参考）-> 世界观素材筛选 Agent 按需迁移全篇/片段到 `data/world_refs/{chapter_id}/` -> 按并发配置生成角色贡献 -> 成稿并可流式输出（含可选世界观参考） -> 编辑复核 JSON（含可选世界观参考） -> 修订（满足条件时，不注入世界观参考） -> 反AI高频词审核清理 -> 终审（无条件执行，不注入世界观参考） -> 生成当前章剧情摘要并写入缓存 -> 每次成稿/修订/终审归档版本
-- 异常/边界处理: 缺少 API Key 直接报错；provider 缺少必填模型字段（Anthropic `model_name` / 其他 provider `model`）时报配置错误；章节文件已存在且未 `--force` 则中止；流式失败自动回退为非流式；计划/贡献/复核 JSON 多轮修复后仍不合法则中止
+- 运行步骤: chapter 命令先读取计划（缺失则自动补跑 plan；plan 阶段会注入章节连续性上下文并引入可选世界观参考）-> 世界观素材筛选 Agent 按需迁移全篇/片段到 `data/world_refs/{chapter_id}/` -> 按并发配置生成角色贡献 -> RAG 检索知识库行文片段并注入成稿提示词 -> 成稿并可流式输出（含可选世界观参考与 RAG 参考） -> 编辑复核 JSON（含可选世界观参考） -> 修订（满足条件时，不注入世界观参考） -> 反AI高频词审核清理 -> 终审（无条件执行，不注入世界观参考） -> 生成当前章剧情摘要并写入缓存 -> 每次成稿/修订/终审归档版本
+- 异常/边界处理: 缺少 API Key 直接报错；provider 缺少必填模型字段（Anthropic `model_name` / 其他 provider `model`）时报配置错误；章节文件已存在且未 `--force` 则中止；流式失败自动回退为非流式；计划/贡献/复核 JSON 多轮修复后仍不合法则中止；RAG 缺少 `ZHIPUAI_API_KEY` 或向量库为空时仅跳过 RAG 参考，不中断成稿主流程
 - 观测与日志: `--trace` 写入 `logs/trace_{chapter}_{YYYY-MM-DD_HH:mm:ss}.log`，章节状态写入 `data/state.json`，可选启用 LangSmith 跟踪
 
 ### 观测与追踪（LangSmith）
@@ -106,6 +117,24 @@ export LANGSMITH_PROJECT=your_langsmith_project
 ```
 
 ## 改动概要/变更记录
+
+### 2026-02-28 16:21:54
+
+- 本次新增/更新要点: 同步 RAG 清洗规则增强：新增抓取网文噪声过滤（`（ps:）`、`(本章完)`、分隔线、相邻重复章节标题），用于适配“章节标题重复 + 新书求票 + 本章完”这类文本格式
+- 变更动机/需求来源: 用户提供新样例并要求“这种格式也过滤”，并同步更新架构文档
+- 当前更新时间: 2026-02-28 16:21:54
+
+### 2026-02-28 16:15:28
+
+- 本次新增/更新要点: 同步 RAG 入库切分优化：`src/rag/indexer.py` 新增 `ps*`/分隔线清洗、章节标题识别、段落优先分块与长段滑窗兜底；补充编码读取策略 `utf-8/utf-8-sig/gb18030`（兼容 GB2312）；同步当前 `paths.rag_source_dir=data/rag/novel_txt`
+- 变更动机/需求来源: 用户提供《剑来》样例并询问格式适配，要求按建议优化 RAG 读取与切分策略后更新架构文档
+- 当前更新时间: 2026-02-28 16:15:28
+
+### 2026-02-28 15:38:40
+
+- 本次新增/更新要点: 新增 LlamaIndex RAG 框架能力（`src/rag/*`）：支持小说 txt 入库到 Chroma 向量库（`rag-index` 命令）与成稿阶段检索注入；Embedding 采用智谱 `embedding-3` 并实现 64 条分批；配置新增 `rag.*` 与 `paths.rag_*`
+- 变更动机/需求来源: 用户要求“添加 LlamaIndex 框架做数据接入/索引/检索，用知识库小说行文示例降低 AI 味，并提供 txt 入库逻辑”
+- 当前更新时间: 2026-02-28 15:38:40
 
 ### 2026-02-28 14:58:22
 
@@ -127,8 +156,8 @@ export LANGSMITH_PROJECT=your_langsmith_project
 
 ### 2026-02-24 21:50:42
 
-- 本次新增/更新要点: 成稿阶段新增“连续性上下文”注入，按规则读取已生成章节（前 3 章全文，其余章节剧情摘要）；新增 `data/chapter_plot_summaries.json` 作为剧情摘要持久化缓存，仅保留 LLM 生成来源，避免混入 `state` 回填摘要
-- 变更动机/需求来源: 用户要求“成稿阶段读取已生成章节并保持剧情连贯；前 3 章全文、其余摘要；摘要需持久化且已生成不重复”
+- 本次新增/更新要点: 成稿阶段新增“连续性上下文”注入，按规则读取已生成章节（紧邻当前章节的前 3 章全文，其余章节剧情摘要）；新增 `data/chapter_plot_summaries.json` 作为剧情摘要持久化缓存，仅保留 LLM 生成来源，避免混入 `state` 回填摘要
+- 变更动机/需求来源: 用户要求“成稿阶段读取已生成章节并保持剧情连贯；紧邻当前章节的前 3 章全文、其余摘要；摘要需持久化且已生成不重复”
 - 当前更新时间: 2026-02-24 21:50:42
 
 ### 2026-02-24 17:57:31

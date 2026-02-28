@@ -16,7 +16,7 @@ def _new_pipeline(tmp_path: Path) -> LangChainPipeline:
     return pipeline
 
 
-def test_build_chapter_context_reads_first_three_full_then_summary(tmp_path):
+def test_build_chapter_context_reads_latest_three_full_then_summary(tmp_path):
     pipeline = _new_pipeline(tmp_path)
     chapters_dir = tmp_path / "chapters"
     chapters_dir.mkdir(parents=True, exist_ok=True)
@@ -50,17 +50,17 @@ def test_build_chapter_context_reads_first_three_full_then_summary(tmp_path):
         generation={},
     )
 
-    assert "【第0001章·标题1·全文】" in context
-    assert "正文0001" in context
-    assert "【第0002章·标题2·全文】" in context
-    assert "正文0002" in context
+    assert "【第0001章·标题1·剧情摘要】" in context
+    assert "摘要0001" in context
+    assert "【第0002章·标题2·剧情摘要】" in context
+    assert "摘要0002" in context
     assert "【第0003章·标题3·全文】" in context
     assert "正文0003" in context
-    assert "【第0004章·标题4·剧情摘要】" in context
-    assert "摘要0004" in context
-    assert "【第0005章·标题5·剧情摘要】" in context
-    assert "摘要0005" in context
-    assert called_ids == ["0001", "0002", "0003", "0004", "0005"]
+    assert "【第0004章·标题4·全文】" in context
+    assert "正文0004" in context
+    assert "【第0005章·标题5·全文】" in context
+    assert "正文0005" in context
+    assert called_ids == ["0001", "0002"]
 
 
 def test_get_or_create_plot_summary_reuses_file_cache(tmp_path):

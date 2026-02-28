@@ -92,6 +92,7 @@ def build_director_draft_prompt(
     chapter_max_chars: int,
     draft_examples: List[Dict[str, Any]] | None = None,
     world_references: str | None = None,
+    rag_references: str | None = None,
 ) -> ChatPromptTemplate:
     system = style_guide
     user = (
@@ -122,6 +123,7 @@ def build_director_draft_prompt(
             user += "\n"
             index += 1
     user = _append_world_references(user, world_references)
+    user = _append_rag_references(user, rag_references)
     user = _inject_role_consistency_anchors(user)
     system = escape_prompt_template(system)
     user = escape_prompt_template(user)
@@ -395,6 +397,20 @@ def _append_chapter_context(user_prompt: str, chapter_context: str | None) -> st
         f"{user_prompt}"
         "已生成章节连续性参考（必须保持设定与因果一致，不得与既有剧情冲突）：\n"
         f"{context}\n\n"
+    )
+
+
+def _append_rag_references(user_prompt: str, rag_references: str | None) -> str:
+    if not rag_references:
+        return user_prompt
+    references = rag_references.strip()
+    if not references:
+        return user_prompt
+    return (
+        f"{user_prompt}"
+        "知识库行文参考（学习表达与措辞节奏；禁止整句照抄，禁止复用原情节）：\n"
+        f"{references}\n\n"
+        "请优先参考这些片段中的动作动词、语气词、口语化短句与对话节奏来改写成稿。\n\n"
     )
 
 

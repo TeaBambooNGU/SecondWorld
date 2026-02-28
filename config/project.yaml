@@ -32,7 +32,7 @@ providers:
         name: "DeepSeek Reasoner"
 
 api:
-  provider: "anthropic"
+  provider: "deepseek"
 
 generation:
   chapter_min_chars: 3000
@@ -49,6 +49,16 @@ dialogue:
   max_concurrency: 3
   memory_summary_every: 10
   memory_summary_threshold: 30
+
+rag:
+  enabled: true
+  embedding_model: "embedding-3"
+  embedding_batch_size: 64
+  chunk_size_chars: 420
+  chunk_overlap_chars: 80
+  min_chunk_chars: 80
+  retriever_top_k: 6
+  max_reference_chars: 1600
 
 paths:
   agents: "config/agents.yaml"
@@ -69,3 +79,6 @@ paths:
   state_path: "data/state.json"
   plot_summary_cache_path: "data/chapter_plot_summaries.json"
   plans_dir: "data/plans"
+  rag_source_dir: "data/rag/novel_txt"
+  rag_vector_db_dir: "data/rag/chroma"
+  rag_collection: "novel_style_cases"

@@ -139,6 +139,24 @@ def test_build_director_draft_prompt_includes_world_references():
     _assert_role_anchors(user_content)
 
 
+def test_build_director_draft_prompt_includes_rag_references():
+    plan = {"chapter_id": "0001", "title": "Test Chapter"}
+    contributions = {"agent": "贡献"}
+    prompt = build_director_draft_prompt(
+        plan=plan,
+        contributions=contributions,
+        style_guide="Style",
+        chapter_min_chars=2000,
+        chapter_max_chars=4000,
+        rag_references="翻了个白眼，嘟囔道。",
+    )
+    user_content = prompt.format_messages()[1].content
+    assert "知识库行文参考" in user_content
+    assert "翻了个白眼，嘟囔道" in user_content
+    assert "禁止整句照抄" in user_content
+    _assert_role_anchors(user_content)
+
+
 def test_build_director_draft_prompt_requires_rewrite_of_explanatory_highlights():
     plan = {"chapter_id": "0001", "title": "Test Chapter"}
     contributions = {"agent": "贡献"}

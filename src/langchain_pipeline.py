@@ -31,6 +31,7 @@ from .prompting import (
     build_world_material_selector_prompt,
     compose_style_guide,
 )
+from .rag.service import build_rag_query, format_rag_references, retrieve_rag_examples, resolve_rag_config
 from .utils import (
     FileLogger,
     build_agent_profile,
@@ -157,6 +158,7 @@ class LangChainPipeline:
             chapter_max_chars=generation["chapter_max_chars"],
             draft_examples=draft_examples,
             world_references=world_references,
+            rag_references=self._build_rag_references(plan=plan, contributions=contributions),
         )
         output_path = self._chapter_output_path(plan)
         if output_path.exists() and not force:
@@ -646,16 +648,11 @@ class LangChainPipeline:
         if not generated_chapters:
             return ""
 
-        lines: list[str] = ["读取策略：前3章使用全文，其余章节使用剧情摘要。"]
+        lines: list[str] = ["读取策略：紧邻当前章节的前3章使用全文，其余章节使用剧情摘要。"]
         full_count = 3
-        for index, (chapter_id, chapter_title, chapter_path) in enumerate(generated_chapters, start=1):
-            plot_summary = self._get_or_create_plot_summary(
-                chapter_id=chapter_id,
-                chapter_title=chapter_title,
-                chapter_path=chapter_path,
-                generation=generation,
-            )
-            if index <= full_count:
+        full_start_index = max(len(generated_chapters) - full_count, 0)
+        for index, (chapter_id, chapter_title, chapter_path) in enumerate(generated_chapters):
+            if index >= full_start_index:
                 chapter_text = chapter_path.read_text(encoding="utf-8").strip()
                 if not chapter_text:
                     continue
@@ -663,6 +660,12 @@ class LangChainPipeline:
                 lines.append(chapter_text)
                 lines.append("")
                 continue
+            plot_summary = self._get_or_create_plot_summary(
+                chapter_id=chapter_id,
+                chapter_title=chapter_title,
+                chapter_path=chapter_path,
+                generation=generation,
+            )
             if not plot_summary:
                 continue
             lines.append(f"【第{chapter_id}章·{chapter_title}·剧情摘要】")
@@ -1062,6 +1065,32 @@ class LangChainPipeline:
         if summary.startswith("```") and summary.endswith("```"):
             summary = summary.strip("`").strip()
         return summary
+
+    def _build_rag_references(
+        self,
+        *,
+        plan: Dict[str, Any],
+        contributions: Dict[str, Any],
+    ) -> str:
+        rag_config = resolve_rag_config(self.project)
+        if not rag_config.get("enabled"):
+            return ""
+        try:
+            query = build_rag_query(plan, contributions)
+            results = retrieve_rag_examples(
+                project_config=self.project,
+                query=query,
+            )
+        except Exception as exc:
+            self._log_info(f"RAG 检索失败，跳过知识库参考: {exc}")
+            return ""
+        if not results:
+            self._log_info("RAG 检索无结果，跳过知识库参考")
+            return ""
+        references = format_rag_references(results)
+        if references:
+            self._log_info(f"RAG 检索完成，命中片段数={len(results)}")
+        return references
 
     def _build_llm(
         self,
