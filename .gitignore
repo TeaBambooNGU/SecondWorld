@@ -31,7 +31,7 @@ logs/
 
 # Data
 *.parquet
-data/rag/
+data/rag
 
 # IntelliJ and VSCode project
 *.iml
