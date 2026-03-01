@@ -5,9 +5,15 @@ import json
 import sys
 from datetime import datetime
 
-from .config_loader import load_yaml
-from .pipeline import ChapterPipeline
+from .config_loader import load_env, load_yaml
+from .langchain_pipeline import LangChainPipeline
+from .rag.service import build_rag_index
 from .utils import FileLogger, load_json
+
+
+class _StdoutProgressLogger:
+    def info(self, message: str) -> None:
+        print(message, flush=True)
 
 
 def _resolve_default_chapter_id(config_path: str) -> str:
@@ -67,6 +73,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to trace log file (default: logs/trace_{chapter}_{YYYY-MM-DD_HH:mm:ss}.log when --trace is set)",
     )
 
+    rag_parser = subparsers.add_parser("rag-index", help="Build novel knowledge-base vector index")
+    rag_parser.add_argument(
+        "--source-dir",
+        default=None,
+        help="Directory containing txt novels for indexing (default: paths.rag_source_dir)",
+    )
+    rag_parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Rebuild collection from scratch before indexing",
+    )
+
     return parser
 
 
@@ -81,7 +99,20 @@ def main() -> int:
         logger.info(f"启动命令: {args.command} chapter={getattr(args, 'chapter', None)}")
         logger.info(f"配置路径: {args.config}")
 
-    pipeline = ChapterPipeline(project_path=args.config, logger=logger)
+    if args.command == "rag-index":
+        load_env()
+        project = load_yaml(args.config)
+        progress_logger = _StdoutProgressLogger()
+        result = build_rag_index(
+            project_config=project,
+            source_dir=args.source_dir,
+            rebuild=args.rebuild,
+            logger=progress_logger,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
+    pipeline = LangChainPipeline(project_path=args.config, logger=logger)
 
     if args.command == "plan":
         plan = pipeline.run_plan(chapter_id=args.chapter)

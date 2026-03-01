@@ -2,21 +2,91 @@ project:
   title: "SecondWorld"
   language: "zh"
 
+providers:
+  openai:
+    baseUrl: "https://code.ppchat.vip/v1"
+    api: "openai-completions"
+    apiKeyEnv: "OPENAI_API_KEY"
+    model: "gpt-5.2-codex"
+    timeoutSec: 120
+    maxRetries: 3
+    stream: true
+    models:
+      - id: "gpt-5.3-codex"
+        name: "GPT-5.3 Codex"
+      - id: "gpt-5.2"
+        name: "GPT-5.2"
+  anthropic:
+    baseUrl: "https://code.ppchat.vip"
+    api: "anthropic-messages"
+    apiKeyEnv: "ANTHROPIC_API_KEY"
+    model_name: "claude-sonnet-4-6"
+    thinking:
+      type: "enabled"
+      budget_tokens: 2048
+    timeoutSec: 120
+    maxRetries: 3
+    stream: true
+    models:
+      - model_name: "claude-opus-4-6"
+        name: "Claude Opus 4.6"
+      - model_name: "claude-sonnet-4-6"
+        name: "Claude Sonnet 4.6"
+      - model_name: "claude-haiku-4-5-20251001"
+        name: "Claude Sonnet 4.5"
+  deepseek:
+    baseUrl: "https://api.deepseek.com"
+    apiKeyEnv: "DEEPSEEK_API_KEY"
+    timeoutSec: 120
+    maxRetries: 3
+    stream: true
+    models:
+      - id: "deepseek-reasoner"
+        name: "DeepSeek Reasoner"
+
 api:
-  base_url: "https://api.deepseek.com"
-  model: "deepseek-reasoner"
-  api_key_env: "DEEPSEEK_API_KEY"
-  timeout_sec: 120
-  max_retries: 3
-  stream: true
+  provider: "deepseek"
 
 generation:
   chapter_min_chars: 3000
   chapter_max_chars: 5000
   max_agents_per_chapter: 10
   max_turns: 2
+  agent_concurrency: 3
   temperature: 1.5
-  top_p: 0.8
+  top_p: null
+  top_k: null
+  world_selector_batch_chars: 150000
+
+dialogue:
+  max_concurrency: 3
+  memory_summary_every: 10
+  memory_summary_threshold: 30
+
+rag:
+  enabled: true
+  vector_store: "milvus"
+  embedding_model: "embedding-3"
+  embedding_batch_size: 64
+  chunk_size_chars: 420
+  chunk_overlap_chars: 80
+  min_chunk_chars: 80
+  retriever_top_k: 6
+  retrieval_modes:
+    - "default"
+    - "mmr"
+  fusion_num_queries: 3
+  fusion_use_async: false
+  mmr_lambda: 0.65
+  mmr_prefetch_factor: 4.0
+  max_reference_chars: 1600
+  milvus:
+    uri: "http://127.0.0.1:19530"
+    token: ""
+    db_name: "default"
+    consistency_level: "Session"
+    dim: 2048
+    use_async_client: false
 
 paths:
   agents: "config/agents.yaml"
@@ -25,6 +95,18 @@ paths:
   style_guide_agents_dir: "config/style_guide/agents"
   style_guide_components_dir: "config/style_guide/components"
   style_guide_draft_examples: "config/style_guide/draft_examples.yaml"
+  world_materials_dir: "/Users/teabamboo/Documents/NGU_Notes/我的小说"
+  world_materials_exclude_patterns:
+    - "CLAUDE.md"
+    - "AGENTS.md"
+    - "*第*卷*.md"
+    - "当前问题.md"
+    - "提示语修正.md"
+    - "文本分布优化器.md"
   output_dir: "chapters"
   state_path: "data/state.json"
+  plot_summary_cache_path: "data/chapter_plot_summaries.json"
   plans_dir: "data/plans"
+  rag_source_dir: "data/rag/novel_txt"
+  rag_vector_db_dir: "data/rag/chroma"
+  rag_collection: "novel_style_cases"

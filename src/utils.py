@@ -35,8 +35,68 @@ def slugify(value: str) -> str:
 
 
 def extract_json(text: str) -> str | None:
-    match = re.search(r"\{[\s\S]*\}", text)
-    return match.group(0) if match else None
+    candidates: list[str] = []
+
+    fenced_blocks = re.findall(r"```(?:json|JSON)\s*([\s\S]*?)```", text)
+    for block in fenced_blocks:
+        candidate = _extract_balanced_json_object(block)
+        if candidate:
+            candidates.append(candidate)
+
+    generic_blocks = re.findall(r"```\s*([\s\S]*?)```", text)
+    for block in generic_blocks:
+        candidate = _extract_balanced_json_object(block)
+        if candidate:
+            candidates.append(candidate)
+
+    candidates.extend(_extract_balanced_json_objects(text))
+
+    if not candidates:
+        return None
+    return candidates[-1]
+
+
+def _extract_balanced_json_object(text: str) -> str | None:
+    objects = _extract_balanced_json_objects(text)
+    if not objects:
+        return None
+    return objects[0]
+
+
+def _extract_balanced_json_objects(text: str) -> list[str]:
+    objects: list[str] = []
+    depth = 0
+    start: int | None = None
+    in_string = False
+    escaped = False
+
+    for idx, char in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+                continue
+            if char == "\\":
+                escaped = True
+                continue
+            if char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+            continue
+        if char == "{":
+            if depth == 0:
+                start = idx
+            depth += 1
+            continue
+        if char == "}" and depth > 0:
+            depth -= 1
+            if depth == 0 and start is not None:
+                objects.append(text[start : idx + 1])
+                start = None
+
+    return objects
 
 
 def extract_forbidden_terms(text: str) -> list[str]:
@@ -79,6 +139,10 @@ def find_forbidden_terms(text: str, terms: list[str]) -> list[str]:
         if term and term in text:
             hits.append(term)
     return list(dict.fromkeys(hits))
+
+
+def escape_prompt_template(text: str) -> str:
+    return text.replace("{", "{{").replace("}", "}}")
 
 
 def load_json(path: str | Path, default: Any) -> Any:
