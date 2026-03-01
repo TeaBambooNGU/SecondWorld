@@ -217,6 +217,7 @@ def retrieve_rag_examples(
     project_config: Dict[str, Any],
     query: str,
     logger=None,
+    llm: Any | None = None,
 ) -> list[Dict[str, Any]]:
     rag_config = resolve_rag_config(project_config)
     if not rag_config["enabled"]:
@@ -244,4 +245,5 @@ def retrieve_rag_examples(
         mmr_prefetch_factor=rag_config["mmr_prefetch_factor"],
         max_reference_chars=rag_config["max_reference_chars"],
         logger=logger,
+        llm=llm,
     )

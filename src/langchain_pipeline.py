@@ -1075,6 +1075,18 @@ class LangChainPipeline:
         rag_config = resolve_rag_config(self.project)
         if not rag_config.get("enabled"):
             return ""
+        rewrite_llm = None
+        if int(rag_config.get("fusion_num_queries", 1)) > 1:
+            try:
+                generation = self.project.get("generation") if isinstance(self.project.get("generation"), dict) else {}
+                rewrite_llm = self._build_llm(
+                    temperature=0.2,
+                    top_p=0.9,
+                    top_k=generation.get("top_k") if isinstance(generation, dict) else None,
+                    streaming=False,
+                )
+            except Exception as exc:
+                self._log_info(f"RAG Query 改写LLM构建失败，降级为不改写: {exc}")
         try:
             query = build_rag_query(plan, contributions)
             self._log_info(f"RAG 检索 query:\n{query}")
@@ -1082,6 +1094,7 @@ class LangChainPipeline:
                 project_config=self.project,
                 query=query,
                 logger=self._log_info,
+                llm=rewrite_llm,
             )
         except Exception as exc:
             self._log_info(f"RAG 检索失败，跳过知识库参考: {exc}")

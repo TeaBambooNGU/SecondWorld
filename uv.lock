@@ -1430,6 +1430,19 @@ wheels = [
 ]
 
 [[package]]
+name = "llama-index-llms-langchain"
+version = "0.7.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "langchain" },
+    { name = "llama-index-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0b/b9/87b76f270a424d07ed8e9524576136b9de675ad50f9da3c29708e5fbfbb2/llama_index_llms_langchain-0.7.2.tar.gz", hash = "sha256:86f2e5654c22d63dfaa94772569401d6148ef146bc04c427a5673503f23db00f", size = 6067, upload-time = "2026-02-19T21:53:44.951Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/58/fd/bdd96add193bd8b7604edbedd94fd9c71e0ab66f70a85e7405f70d2138d7/llama_index_llms_langchain-0.7.2-py3-none-any.whl", hash = "sha256:4c8af654237b3a03f886b8effec2126d66d2b06c0352f6805ee6193d51c16aa3", size = 6116, upload-time = "2026-02-19T21:53:43.985Z" },
+]
+
+[[package]]
 name = "llama-index-llms-openai"
 version = "0.6.21"
 source = { registry = "https://pypi.org/simple" }
@@ -3054,6 +3067,7 @@ dependencies = [
     { name = "langchain-openai" },
     { name = "langgraph" },
     { name = "llama-index" },
+    { name = "llama-index-llms-langchain" },
     { name = "llama-index-vector-stores-chroma" },
     { name = "llama-index-vector-stores-milvus" },
     { name = "pymilvus" },
@@ -3077,6 +3091,7 @@ requires-dist = [
     { name = "langchain-openai" },
     { name = "langgraph" },
     { name = "llama-index", specifier = ">=0.14.15" },
+    { name = "llama-index-llms-langchain", specifier = ">=0.7.2" },
     { name = "llama-index-vector-stores-chroma", specifier = ">=0.5.5" },
     { name = "llama-index-vector-stores-milvus", specifier = ">=1.0.0" },
     { name = "pymilvus", specifier = ">=2.6.9" },

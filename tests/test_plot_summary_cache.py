@@ -180,3 +180,30 @@ def test_build_rag_references_logs_empty_results(tmp_path, monkeypatch):
     assert "RAG 检索 query:\n测试query" in logs
     assert "RAG 检索结果: []" in logs
     assert "RAG 检索无结果，跳过知识库参考" in logs
+
+
+def test_build_rag_references_passes_rewrite_llm_when_query_rewrite_enabled(tmp_path, monkeypatch):
+    pipeline = _new_pipeline(tmp_path)
+    logs: list[str] = []
+    pipeline._log_info = logs.append  # type: ignore[method-assign]
+
+    sentinel_llm = object()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        langchain_pipeline_module,
+        "resolve_rag_config",
+        lambda _: {"enabled": True, "fusion_num_queries": 3},
+    )
+    monkeypatch.setattr(langchain_pipeline_module, "build_rag_query", lambda *_args, **_kwargs: "测试query")
+    monkeypatch.setattr(
+        langchain_pipeline_module,
+        "retrieve_rag_examples",
+        lambda *_args, **kwargs: captured.update({"llm": kwargs.get("llm")}) or [],
+    )
+    pipeline._build_llm = lambda **_kwargs: sentinel_llm  # type: ignore[method-assign]
+
+    result = pipeline._build_rag_references(plan={}, contributions={})
+
+    assert result == ""
+    assert captured["llm"] is sentinel_llm

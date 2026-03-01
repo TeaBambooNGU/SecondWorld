@@ -50,6 +50,7 @@ class NovelRAGRetriever:
         mmr_prefetch_factor: float,
         max_reference_chars: int,
         logger: Callable[[str], None] | None = None,
+        llm: Any | None = None,
     ) -> List[Dict[str, Any]]:
         if not query.strip():
             return []
@@ -60,6 +61,10 @@ class NovelRAGRetriever:
 
         top_k = max(1, int(top_k))
         fusion_num_queries = max(1, int(fusion_num_queries))
+        if fusion_num_queries > 1 and llm is None:
+            if logger:
+                logger("RAG Query 改写跳过: 未传入改写LLM，降级 fusion_num_queries=1")
+            fusion_num_queries = 1
 
         index = VectorStoreIndex.from_vector_store(
             vector_store=vector_store,
@@ -77,16 +82,19 @@ class NovelRAGRetriever:
 
         fusion = _LoggedQueryFusionRetriever(
             retrievers=retrievers,
+            llm=llm,
             similarity_top_k=top_k,
             num_queries=fusion_num_queries,
             mode=FUSION_MODES.RECIPROCAL_RANK,
             use_async=bool(fusion_use_async),
-            verbose=True,
+            verbose=False,
         )
         try:
             nodes = fusion.retrieve(query)
-        except Exception:
+        except Exception as exc:
             # 融合流程异常时退化为第一路检索，避免中断主流程。
+            if logger:
+                logger(f"RAG QueryFusion 检索失败，回退基础检索: {exc}")
             nodes = retrievers[0].retrieve(query)
         if logger:
             _log_generated_queries(logger, fusion.generated_queries)

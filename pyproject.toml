@@ -19,6 +19,7 @@ dependencies = [
   "zhipuai>=2.1.5.20250825",
   "pymilvus>=2.6.9",
   "llama-index-vector-stores-milvus>=1.0.0",
+  "llama-index-llms-langchain>=0.7.2",
 ]
 
 [dependency-groups]
