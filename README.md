@@ -2,8 +2,13 @@
 
 > 本地运行的多 Agent 小说创作流水线：从章节计划到成稿、修订、终审，并支持基于 LlamaIndex 的 RAG 行文参考。
 
-[![Python](https://img.shields.io/badge/Python-3.12%2B-blue)](#)
-[![Package Manager](https://img.shields.io/badge/Package-uv-5A67D8)](#)
+[![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white)](#)
+[![Package Manager](https://img.shields.io/badge/Package-uv-DE5FE9?style=flat-square)](#)
+[![Test](https://img.shields.io/badge/Test-Pytest-0A9EDC?style=flat-square&logo=pytest&logoColor=white)](#)
+[![Orchestration](https://img.shields.io/badge/Orchestration-LangGraph-0E9F6E?style=flat-square)](#)
+[![RAG](https://img.shields.io/badge/RAG-LlamaIndex-7C3AED?style=flat-square)](#)
+[![Vector Store](https://img.shields.io/badge/Vector%20Store-Chroma%20%7C%20Milvus-4C51BF?style=flat-square)](#)
+[![LLM](https://img.shields.io/badge/LLM-DeepSeek%20%7C%20OpenAI%20%7C%20Anthropic-10B981?style=flat-square)](#)
 
 ## 项目简介
 
