@@ -1,7 +1,14 @@
 from pathlib import Path
 
 from src.rag.indexer import NovelRAGIndexer, discover_txt_files, split_novel_text
-from src.rag.service import build_rag_query, format_rag_references, resolve_rag_config
+from src.rag.service import (
+    build_hyde_context,
+    build_hyde_query,
+    build_rag_query,
+    format_rag_references,
+    resolve_rag_config,
+    retrieve_rag_examples,
+)
 
 
 class _MemoryLogger:
@@ -10,6 +17,21 @@ class _MemoryLogger:
 
     def info(self, message: str):
         self.messages.append(message)
+
+
+class _DummyAIMessage:
+    def __init__(self, content):
+        self.content = content
+
+
+class _DummyLLM:
+    def __init__(self, response):
+        self.response = response
+        self.prompts: list[str] = []
+
+    def invoke(self, prompt: str):
+        self.prompts.append(prompt)
+        return self.response
 
 
 def test_resolve_rag_config_defaults():
@@ -24,6 +46,11 @@ def test_resolve_rag_config_defaults():
     assert config["fusion_use_async"] is False
     assert config["mmr_lambda"] == 0.65
     assert config["mmr_prefetch_factor"] == 4.0
+    assert config["hyde_enabled"] is False
+    assert config["hyde_max_chars"] == 420
+    assert config["hyde_style_profile"] == "balanced"
+    assert config["hyde_target_length"] == 220
+    assert config["hyde_require_dialogue_ratio"] == 0.3
     assert config["source_dir"] == "data/rag/source_txt"
     assert config["milvus_uri"] == "http://127.0.0.1:19530"
     assert config["milvus_db_name"] == "default"
@@ -80,6 +107,26 @@ def test_resolve_rag_config_modes_fallback_to_default_and_mmr():
     assert config["retrieval_modes"] == ["default", "mmr"]
 
 
+def test_resolve_rag_config_hyde_min_chars():
+    config = resolve_rag_config(
+        {
+            "rag": {
+                "hyde_enabled": True,
+                "hyde_max_chars": 30,
+                "hyde_style_profile": "动作",
+                "hyde_target_length": 900,
+                "hyde_require_dialogue_ratio": 2.0,
+            },
+            "paths": {},
+        }
+    )
+    assert config["hyde_enabled"] is True
+    assert config["hyde_max_chars"] == 80
+    assert config["hyde_style_profile"] == "action"
+    assert config["hyde_target_length"] == 600
+    assert config["hyde_require_dialogue_ratio"] == 1.0
+
+
 def test_build_rag_query_contains_plan_and_highlights():
     plan = {
         "title": "皇城夜雨",
@@ -110,6 +157,40 @@ def test_build_rag_query_contains_plan_and_highlights():
     assert "detail_anchors" not in query
 
 
+def test_build_hyde_query_strips_fence_and_clamps_length():
+    llm = _DummyLLM(_DummyAIMessage("```text\n" + "甲" * 120 + "\n```"))
+    hyde_query = build_hyde_query(
+        query="章节目标：对峙与试探",
+        llm=llm,
+        max_chars=90,
+        style_profile="dialogue",
+        target_length=200,
+        dialogue_ratio=0.4,
+        context_hint="冲突类型: 试探博弈",
+    )
+    assert "```" not in hyde_query
+    assert len(hyde_query) <= 90
+    assert llm.prompts
+    assert "风格档位: dialogue" in llm.prompts[0]
+    assert "冲突类型: 试探博弈" in llm.prompts[0]
+
+
+def test_build_hyde_context_contains_conflict_relation_and_tone():
+    plan = {
+        "goal": "潜入后试探底线",
+        "conflicts": ["身份暴露风险", "话术博弈"],
+        "beats": [{"content": "雨夜对峙"}, "压低声线探口风"],
+    }
+    contributions = {
+        "于皓": {"highlights": [{"content": "他笑了笑，敲了两下桌面。"}]},
+        "柳七": {"highlights": [{"content": "“你想问什么？”柳七挑眉。"}]},
+    }
+    context = build_hyde_context(plan, contributions)
+    assert "冲突类型:" in context
+    assert "人物关系: 于皓、柳七同场交锋" in context
+    assert "语气线索:" in context
+
+
 def test_format_rag_references():
     text = format_rag_references(
         [
@@ -122,6 +203,35 @@ def test_format_rag_references():
     )
     assert "示例.txt#2" in text
     assert "翻了个白眼" in text
+
+
+def test_retrieve_rag_examples_merges_hyde_results(monkeypatch):
+    class _DummyRetriever:
+        calls: list[str] = []
+
+        def __init__(self, **_kwargs):
+            pass
+
+        def retrieve(self, **kwargs):
+            query = kwargs["query"]
+            self.calls.append(query)
+            if len(self.calls) == 1:
+                return [{"text": "主检索片段", "file_name": "a.txt", "chunk_index": 1}]
+            return [{"text": "HyDE检索片段", "file_name": "b.txt", "chunk_index": 2}]
+
+    monkeypatch.setattr("src.rag.service._build_embed_model", lambda _config: object())
+    monkeypatch.setattr("src.rag.service.NovelRAGRetriever", _DummyRetriever)
+    llm = _DummyLLM("他压低声音笑了一下，手指轻轻敲着桌沿。")
+
+    results = retrieve_rag_examples(
+        project_config={"rag": {"enabled": True, "hyde_enabled": True, "max_reference_chars": 300}, "paths": {}},
+        query="章节目标：对话博弈，语气克制",
+        llm=llm,
+        hyde_context="冲突类型: 试探",
+    )
+    assert len(results) == 2
+    assert results[0]["text"] == "主检索片段"
+    assert results[1]["text"] == "HyDE检索片段"
 
 
 def test_split_novel_text_and_discover_files(tmp_path: Path):

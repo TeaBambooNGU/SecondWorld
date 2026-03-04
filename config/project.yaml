@@ -79,6 +79,11 @@ rag:
   fusion_use_async: false
   mmr_lambda: 0.65
   mmr_prefetch_factor: 4.0
+  hyde_enabled: true
+  hyde_max_chars: 420
+  hyde_style_profile: "balanced"
+  hyde_target_length: 220
+  hyde_require_dialogue_ratio: 0.3
   max_reference_chars: 1600
   milvus:
     uri: "http://127.0.0.1:19530"
