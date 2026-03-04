@@ -31,7 +31,13 @@ from .prompting import (
     build_world_material_selector_prompt,
     compose_style_guide,
 )
-from .rag.service import build_rag_query, format_rag_references, retrieve_rag_examples, resolve_rag_config
+from .rag.service import (
+    build_hyde_context,
+    build_rag_query,
+    format_rag_references,
+    retrieve_rag_examples,
+    resolve_rag_config,
+)
 from .utils import (
     FileLogger,
     build_agent_profile,
@@ -1076,7 +1082,11 @@ class LangChainPipeline:
         if not rag_config.get("enabled"):
             return ""
         rewrite_llm = None
-        if int(rag_config.get("fusion_num_queries", 1)) > 1:
+        needs_query_llm = (
+            int(rag_config.get("fusion_num_queries", 1)) > 1
+            or bool(rag_config.get("hyde_enabled"))
+        )
+        if needs_query_llm:
             try:
                 generation = self.project.get("generation") if isinstance(self.project.get("generation"), dict) else {}
                 rewrite_llm = self._build_llm(
@@ -1089,12 +1099,14 @@ class LangChainPipeline:
                 self._log_info(f"RAG Query 改写LLM构建失败，降级为不改写: {exc}")
         try:
             query = build_rag_query(plan, contributions)
+            hyde_context = build_hyde_context(plan, contributions)
             self._log_info(f"RAG 检索 query:\n{query}")
             results = retrieve_rag_examples(
                 project_config=self.project,
                 query=query,
                 logger=self._log_info,
                 llm=rewrite_llm,
+                hyde_context=hyde_context,
             )
         except Exception as exc:
             self._log_info(f"RAG 检索失败，跳过知识库参考: {exc}")
